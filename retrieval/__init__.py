@@ -4,6 +4,8 @@ __all__ = [
     "create_bm25_retriever",
     "create_chroma_retriever",
     "create_ensemble_retriever",
+    "create_groq_llm",
+    "create_multi_query_retriever",
     "compare_retrievers",
     "load_indexed_chunks",
 ]
