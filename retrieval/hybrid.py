@@ -19,6 +19,11 @@ from langchain_groq import ChatGroq
 from langsmith.run_helpers import get_current_run_tree
 
 from retrieval.bm25 import DEFAULT_K, create_bm25_retriever, load_indexed_chunks
+from retrieval.rerank import (
+    DEFAULT_RERANK_MODEL,
+    DEFAULT_RERANK_TOP_N,
+    wrap_with_reranker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +151,54 @@ def create_multi_query_retriever(
     )
 
 
+def create_reranked_ensemble_retriever(
+    chunks: list[Document] | None = None,
+    *,
+    k: int = DEFAULT_K,
+    bm25_weight: float = BM25_WEIGHT,
+    vector_weight: float = VECTOR_WEIGHT,
+    rerank_model: str = DEFAULT_RERANK_MODEL,
+    rerank_top_n: int = DEFAULT_RERANK_TOP_N,
+) -> BaseRetriever:
+    """Hybrid BM25 + vector retrieval, then FlashRank cross-encoder re-ranking."""
+    ensemble = create_ensemble_retriever(
+        chunks,
+        k=k,
+        bm25_weight=bm25_weight,
+        vector_weight=vector_weight,
+    )
+    return wrap_with_reranker(
+        ensemble,
+        model=rerank_model,
+        top_n=rerank_top_n,
+    )
+
+
+def create_reranked_multi_query_retriever(
+    chunks: list[Document] | None = None,
+    *,
+    k: int = DEFAULT_K,
+    bm25_weight: float = BM25_WEIGHT,
+    vector_weight: float = VECTOR_WEIGHT,
+    groq_llm: ChatGroq | None = None,
+    rerank_model: str = DEFAULT_RERANK_MODEL,
+    rerank_top_n: int = DEFAULT_RERANK_TOP_N,
+) -> BaseRetriever:
+    """Multi-query hybrid retrieval with FlashRank cross-encoder re-ranking."""
+    multi_query = create_multi_query_retriever(
+        chunks,
+        k=k,
+        bm25_weight=bm25_weight,
+        vector_weight=vector_weight,
+        groq_llm=groq_llm,
+    )
+    return wrap_with_reranker(
+        multi_query,
+        model=rerank_model,
+        top_n=rerank_top_n,
+    )
+
+
 def _preview_results(
     documents: list[Document],
     *,
@@ -176,10 +229,13 @@ def compare_retrievers(
     chroma = create_chroma_retriever(k=k)
     hybrid = create_ensemble_retriever(docs, k=k)
 
+    reranked_hybrid = wrap_with_reranker(hybrid)
+
     results = {
         "BM25-only": bm25.invoke(query),
         "Vector-only": chroma.invoke(query),
         "Hybrid (EnsembleRetriever)": hybrid.invoke(query),
+        "Hybrid + FlashRank": reranked_hybrid.invoke(query),
     }
 
     for label, documents in results.items():
