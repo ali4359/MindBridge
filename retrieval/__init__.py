@@ -10,7 +10,11 @@ __all__ = [
     "create_reranked_ensemble_retriever",
     "create_reranked_multi_query_retriever",
     "compare_retrievers",
+    "filter_by_doc_type",
+    "guideline_retriever",
     "load_indexed_chunks",
+    "research_retriever",
+    "session_retriever",
     "wrap_with_reranker",
 ]
 
@@ -28,6 +32,16 @@ def __getattr__(name: str):
         from retrieval import rerank
 
         return getattr(rerank, name)
+
+    if name == "filter_by_doc_type":
+        from retrieval import filters
+
+        return getattr(filters, name)
+
+    if name in {"guideline_retriever", "session_retriever", "research_retriever"}:
+        from retrieval import hybrid
+
+        return getattr(hybrid, name)
 
     from retrieval import hybrid
 

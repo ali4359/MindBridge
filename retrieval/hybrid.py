@@ -18,7 +18,14 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_groq import ChatGroq
 from langsmith.run_helpers import get_current_run_tree
 
+from ingestion.loader import DocType
 from retrieval.bm25 import DEFAULT_K, create_bm25_retriever, load_indexed_chunks
+from retrieval.filters import (
+    GUIDELINE_DOC_TYPE,
+    RESEARCH_DOC_TYPE,
+    SESSION_DOC_TYPE,
+    filter_by_doc_type,
+)
 from retrieval.rerank import (
     DEFAULT_RERANK_MODEL,
     DEFAULT_RERANK_TOP_N,
@@ -49,13 +56,36 @@ Provide each alternative on its own line. Original question: {{question}}""".for
 HYBRID_TEST_QUERY = "DBT distress tolerance skills"
 
 
-def create_chroma_retriever(*, k: int = DEFAULT_K) -> BaseRetriever:
+def create_chroma_retriever(
+    *,
+    k: int = DEFAULT_K,
+    doc_type: DocType | None = None,
+) -> BaseRetriever:
     """Build a similarity retriever over the persisted Chroma index."""
     from ingestion.embeddings import create_embeddings
     from ingestion.indexer import load_vectorstore
 
     vectorstore = load_vectorstore(create_embeddings())
-    return vectorstore.as_retriever(search_kwargs={"k": k})
+    search_kwargs: dict = {"k": k}
+    if doc_type is not None:
+        search_kwargs["filter"] = filter_by_doc_type(doc_type)
+        logger.info("Chroma retriever filter: %s", search_kwargs["filter"])
+    return vectorstore.as_retriever(search_kwargs=search_kwargs)
+
+
+def guideline_retriever(*, k: int = DEFAULT_K) -> BaseRetriever:
+    """Vector search restricted to clinical guidelines (``doc_type=guideline``)."""
+    return create_chroma_retriever(k=k, doc_type=GUIDELINE_DOC_TYPE)
+
+
+def session_retriever(*, k: int = DEFAULT_K) -> BaseRetriever:
+    """Vector search restricted to therapy session notes (``doc_type=session_note``)."""
+    return create_chroma_retriever(k=k, doc_type=SESSION_DOC_TYPE)
+
+
+def research_retriever(*, k: int = DEFAULT_K) -> BaseRetriever:
+    """Vector search restricted to CBT/DBT workbooks (``doc_type=research``)."""
+    return create_chroma_retriever(k=k, doc_type=RESEARCH_DOC_TYPE)
 
 
 def create_ensemble_retriever(
