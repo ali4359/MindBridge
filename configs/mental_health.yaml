@@ -213,6 +213,7 @@ output_schema:
   empty_context_message: "(No relevant context retrieved.)"
 
 safety:
+  enabled: true
   audience: licensed mental health professionals
   disclaimer: >-
     This assistant is a clinical knowledge tool, not a clinician. It does not diagnose,

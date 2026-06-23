@@ -167,6 +167,7 @@ class SafetyConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = True
     audience: str = "licensed mental health professionals"
     disclaimer: str = (
         "This assistant is a clinical knowledge tool, not a clinician. "
