@@ -1,6 +1,8 @@
-# MindBridge demo data story
+# MindBridge use-case demo corpus
 
-This folder holds the **demo corpus** for MindBridge: clinical guidelines, therapy workbooks, and synthetic session notes used to show retrieval-augmented Q&A across mixed mental-health sources.
+This folder holds the **reference corpus** for the MindBridge mental-health profile — the first deployment on the config-driven RAG platform. It contains clinical guidelines, therapy workbooks, and synthetic session notes used to demonstrate retrieval-augmented Q&A across mixed clinical sources.
+
+Other platform profiles (legal, finance, HR, education) will ship their own `data/` trees and YAML configs; this corpus is specific to the MindBridge use case.
 
 ## How the corpus was built
 
@@ -26,7 +28,7 @@ These provide structured exercises and skills language that complements formal g
 
 ### 3. Synthetic therapy session notes (LLM-generated)
 
-Twenty fictional SOAP-format session notes live in `session_notes/`. They are **not real patient records** — they were generated to simulate a clinic’s de-identified note archive for RAG evaluation.
+Twenty fictional SOAP-format session notes live in `session_notes/`. They are **not real patient records** — they were generated to simulate a clinic's de-identified note archive for RAG evaluation.
 
 **Prompt (abbreviated):**
 
@@ -36,7 +38,7 @@ The full prompt is defined in `ingestion/generate_session_notes.py` as `SESSION_
 
 **Why synthetic notes in the demo?**
 
-- Shows MindBridge retrieving across **guidelines + workbooks + operational clinical text**.
+- Shows the platform retrieving across **guidelines + workbooks + operational clinical text** within one profile.
 - Avoids using or leaking real PHI.
 - Gives RAGAS-style eval questions a third document type (short, episodic notes vs. long PDFs).
 
@@ -65,4 +67,4 @@ data/
 
 ## Licensing reminder
 
-Guidelines and workbooks remain subject to their publishers’ terms. The synthetic notes are demo-only fiction. Do not treat retrieved text as medical advice.
+Guidelines and workbooks remain subject to their publishers' terms. The synthetic notes are demo-only fiction. Do not treat retrieved text as medical advice.
