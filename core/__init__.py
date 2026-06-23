@@ -17,6 +17,7 @@ from core.config import (
     UseCaseConfig,
     load_config,
 )
+from core.embeddings import get_embeddings
 
 __all__ = [
     "ChunkingConfig",
@@ -33,5 +34,6 @@ __all__ = [
     "SafetyConfig",
     "SessionNotesConfig",
     "UseCaseConfig",
+    "get_embeddings",
     "load_config",
 ]
