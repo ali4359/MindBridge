@@ -11,6 +11,24 @@ from pydantic import BaseModel, ConfigDict, Field
 RetrievalMode = Literal["bm25", "vector", "hybrid", "multi_query", "hybrid_rerank"]
 
 
+class DataSourceEntryConfig(BaseModel):
+    """Local corpus folder and document-type tag for ingestion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    folder: str
+    doc_type: str
+
+
+def _default_data_sources() -> list[DataSourceEntryConfig]:
+    return [
+        DataSourceEntryConfig(folder="guidelines", doc_type="guideline"),
+        DataSourceEntryConfig(folder="session_notes", doc_type="session_note"),
+        DataSourceEntryConfig(folder="research", doc_type="research"),
+        DataSourceEntryConfig(folder="workbooks", doc_type="research"),
+    ]
+
+
 class DownloadSourceConfig(BaseModel):
     """Remote PDF source for corpus download scripts."""
 
@@ -223,6 +241,7 @@ class UseCaseConfig(BaseModel):
     display_name: str
     description: str = ""
 
+    data_sources: list[DataSourceEntryConfig] = Field(default_factory=_default_data_sources)
     data: DataSourceConfig = Field(default_factory=DataSourceConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)

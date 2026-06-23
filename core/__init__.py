@@ -3,6 +3,7 @@
 from core.config import (
     ChunkingConfig,
     DataSourceConfig,
+    DataSourceEntryConfig,
     DownloadSourceConfig,
     EntityConfig,
     EvaluationConfig,
@@ -20,6 +21,7 @@ from core.config import (
 __all__ = [
     "ChunkingConfig",
     "DataSourceConfig",
+    "DataSourceEntryConfig",
     "DownloadSourceConfig",
     "EntityConfig",
     "EvaluationConfig",

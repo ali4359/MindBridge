@@ -7,6 +7,16 @@ description: >-
   Grounded Q&A for licensed mental health professionals over clinical guidelines,
   CBT/DBT workbooks, and synthetic psychotherapy session notes.
 
+data_sources:
+  - folder: guidelines
+    doc_type: guideline
+  - folder: session_notes
+    doc_type: session_note
+  - folder: research
+    doc_type: research
+  - folder: workbooks
+    doc_type: research
+
 data:
   sources_dir: data
   chroma_path: data/chromadb
