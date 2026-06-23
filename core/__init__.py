@@ -18,6 +18,7 @@ from core.config import (
     load_config,
 )
 from core.embeddings import get_embeddings
+from core.retriever import build_retriever
 
 __all__ = [
     "ChunkingConfig",
@@ -34,6 +35,7 @@ __all__ = [
     "SafetyConfig",
     "SessionNotesConfig",
     "UseCaseConfig",
+    "build_retriever",
     "get_embeddings",
     "load_config",
 ]
