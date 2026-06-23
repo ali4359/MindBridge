@@ -6,8 +6,11 @@ __all__ = [
     "CLINICAL_GROQ_MODEL",
     "CLINICAL_RAG_PROMPT",
     "CONTEXT_CHUNK_TEMPLATE",
+    "SAMPLE_THERAPIST_QUERIES",
     "create_groq_llm",
+    "create_rag_chain",
     "format_retrieved_context",
+    "response_appears_cited",
 ]
 
 if TYPE_CHECKING:
@@ -17,6 +20,11 @@ if TYPE_CHECKING:
         CONTEXT_CHUNK_TEMPLATE,
         format_retrieved_context,
     )
+    from chains.rag import (
+        SAMPLE_THERAPIST_QUERIES,
+        create_rag_chain,
+        response_appears_cited,
+    )
 
 
 def __getattr__(name: str):
@@ -25,6 +33,10 @@ def __getattr__(name: str):
             from chains import llm
 
             return getattr(llm, name)
+        if name in ("SAMPLE_THERAPIST_QUERIES", "create_rag_chain", "response_appears_cited"):
+            from chains import rag
+
+            return getattr(rag, name)
         from chains import prompts
 
         return getattr(prompts, name)
