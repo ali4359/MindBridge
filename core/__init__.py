@@ -3,13 +3,16 @@
 from core.config import (
     ChunkingConfig,
     DataSourceConfig,
+    DownloadSourceConfig,
     EntityConfig,
     EvaluationConfig,
     LlmConfig,
     OutputSchemaConfig,
     PromptsConfig,
+    RetrievalBaselineCase,
     RetrievalConfig,
     SafetyConfig,
+    SessionNotesConfig,
     UseCaseConfig,
     load_config,
 )
@@ -17,13 +20,16 @@ from core.config import (
 __all__ = [
     "ChunkingConfig",
     "DataSourceConfig",
+    "DownloadSourceConfig",
     "EntityConfig",
     "EvaluationConfig",
     "LlmConfig",
     "OutputSchemaConfig",
     "PromptsConfig",
+    "RetrievalBaselineCase",
     "RetrievalConfig",
     "SafetyConfig",
+    "SessionNotesConfig",
     "UseCaseConfig",
     "load_config",
 ]

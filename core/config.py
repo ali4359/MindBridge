@@ -3,10 +3,41 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+RetrievalMode = Literal["bm25", "vector", "hybrid", "multi_query", "hybrid_rerank"]
+
+
+class DownloadSourceConfig(BaseModel):
+    """Remote PDF source for corpus download scripts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: str
+    filename: str
+    title: str
+    license: str
+    url: Optional[str] = None
+    urls: Optional[list[str]] = None
+    compiled: bool = False
+
+
+class SessionNotesConfig(BaseModel):
+    """Synthetic session-note generation settings for demo corpora."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    output_dir: str = "data/session_notes"
+    generation_prompt: str = ""
+    scenarios: list[str] = Field(default_factory=list)
+    count: int = 20
+    model: str = "llama-3.3-70b-versatile"
+    temperature: float = 0.8
+    max_tokens: int = 900
+    pause_seconds: float = 0.5
 
 
 class DataSourceConfig(BaseModel):
@@ -19,6 +50,14 @@ class DataSourceConfig(BaseModel):
     collection: str = "mindbridge"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dim: int = 384
+    embedding_sample_sentence: str = (
+        "Cognitive behavioral therapy helps patients identify unhelpful thought patterns."
+    )
+    user_agent: str = (
+        "MindBridge/0.1 (+https://github.com/mindbridge; research RAG demo; contact: local-dev)"
+    )
+    download_sources: list[DownloadSourceConfig] = Field(default_factory=list)
+    session_notes: SessionNotesConfig = Field(default_factory=SessionNotesConfig)
 
 
 class ChunkingConfig(BaseModel):
@@ -38,6 +77,7 @@ class ChunkingConfig(BaseModel):
         ]
     )
     is_separator_regex: bool = True
+    min_chunks: int = 500
 
 
 class RetrievalConfig(BaseModel):
@@ -45,6 +85,7 @@ class RetrievalConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    mode: RetrievalMode = "hybrid_rerank"
     top_k: int = 10
     bm25_weight: float = 0.4
     vector_weight: float = 0.6
@@ -60,6 +101,8 @@ class EntityConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    name: str = "patient"
+    profile_fields: list[str] = Field(default_factory=list)
     doc_types: list[str] = Field(
         default_factory=lambda: ["guideline", "session_note", "research"]
     )
@@ -94,9 +137,11 @@ class OutputSchemaConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    fields: list[str] = Field(default_factory=list)
     require_citations: bool = True
     pdf_citation_pattern: str = r"\.pdf\b"
     page_citation_pattern: str = r"\bp\.?\s*\d+"
+    empty_context_message: str = "(No relevant context retrieved.)"
 
 
 class SafetyConfig(BaseModel):
@@ -118,6 +163,16 @@ class SafetyConfig(BaseModel):
             "replace_clinical_judgment",
         ]
     )
+    flag_patterns: list[str] = Field(default_factory=list)
+
+
+class RetrievalBaselineCase(BaseModel):
+    """Expected-source retrieval precision check."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    expected_source: str
 
 
 class EvaluationConfig(BaseModel):
@@ -126,6 +181,14 @@ class EvaluationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     golden_set: Optional[str] = None
+    ragas_target_scores: dict[str, float] = Field(default_factory=dict)
+    retrieval_precision_threshold: int = 8
+    retrieval_case_count: int = 10
+    retrieval_top_n_check: int = 3
+    retrieval_baseline_cases: list[RetrievalBaselineCase] = Field(default_factory=list)
+    keyword_test_queries: list[str] = Field(default_factory=list)
+    hybrid_test_query: str = "DBT distress tolerance skills"
+    similarity_test_query: str = "CBT for depression"
     sample_queries: list[str] = Field(
         default_factory=lambda: [
             (
