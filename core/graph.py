@@ -234,3 +234,153 @@ def write_entity_to_graph(
                 from_id=from_id,
                 value=props[prop_name],
             )
+
+
+def write_to_graph(
+    entities: dict[str, Any],
+    entity_id: str,
+    session_id: str,
+    config: UseCaseConfig,
+    driver: Driver,
+) -> None:
+    """Write extracted entities to Neo4j using config-driven MERGE statements."""
+    if config.graph_schema is None:
+        raise ValueError(
+            f"Profile {config.name!r} has no graph_schema; cannot write to graph"
+        )
+
+    with driver.session() as session:
+        write_entity_to_graph(
+            session,
+            entity_id=entity_id,
+            session_id=session_id,
+            extracted=entities,
+            config=config,
+        )
+
+
+def _empty_entity_graph(config: UseCaseConfig) -> dict[str, list[str]]:
+    """Return an empty subgraph dict keyed by config node labels."""
+    schema = config.graph_schema
+    if schema is None:
+        return {}
+
+    graph: dict[str, list[str]] = {schema.session_node: []}
+    for node in schema.nodes:
+        graph[node.label] = []
+    return graph
+
+
+def _relationship_types_to(
+    schema: GraphSchemaConfig,
+    *,
+    from_label: str,
+    to_label: str,
+) -> list[str]:
+    return [
+        rel.type
+        for rel in schema.relationships
+        if rel.from_ == from_label and rel.to == to_label
+    ]
+
+
+def _node_display_property(node: GraphNodeConfig) -> str:
+    return "id" if node.identity == "id" else "name"
+
+
+def _collect_node_values(
+    session: Session,
+    *,
+    entity_id: str,
+    schema: GraphSchemaConfig,
+    node: GraphNodeConfig,
+) -> list[str]:
+    entity_label = schema.entity_node
+    session_label = schema.session_node
+    entity_session_type = schema.entity_session_relationship
+    if entity_session_type is None:
+        raise ValueError("graph_schema.entity_session_relationship is not resolved")
+
+    node_label = node.label
+    display_prop = _node_display_property(node)
+    entity_rel_types = _relationship_types_to(
+        schema, from_label=entity_label, to_label=node_label
+    )
+    session_rel_types = _relationship_types_to(
+        schema, from_label=session_label, to_label=node_label
+    )
+
+    values: list[str] = []
+
+    if entity_rel_types:
+        record = session.run(
+            f"""
+            MATCH (e:{entity_label} {{id: $entity_id}})-[r]->(n:{node_label})
+            WHERE type(r) IN $rel_types
+            RETURN collect(DISTINCT n.{display_prop}) AS values
+            """,
+            entity_id=entity_id,
+            rel_types=entity_rel_types,
+        ).single()
+        if record:
+            values.extend(value for value in record["values"] if value)
+
+    if session_rel_types:
+        record = session.run(
+            f"""
+            MATCH (e:{entity_label} {{id: $entity_id}})
+                  -[:{entity_session_type}]->(s:{session_label})-[r]->(n:{node_label})
+            WHERE type(r) IN $rel_types
+            RETURN collect(DISTINCT n.{display_prop}) AS values
+            """,
+            entity_id=entity_id,
+            rel_types=session_rel_types,
+        ).single()
+        if record:
+            values.extend(value for value in record["values"] if value)
+
+    return list(dict.fromkeys(str(value) for value in values if value is not None))
+
+
+def read_entity_graph(
+    entity_id: str,
+    config: UseCaseConfig,
+    driver: Driver,
+) -> dict[str, list[str]]:
+    """Return the entity subgraph keyed by config node labels."""
+    if config.graph_schema is None:
+        raise ValueError(
+            f"Profile {config.name!r} has no graph_schema; cannot read entity graph"
+        )
+
+    schema = config.graph_schema
+    _validate_schema_identifiers(schema)
+    entity_session_type = schema.entity_session_relationship
+    if entity_session_type is None:
+        raise ValueError("graph_schema.entity_session_relationship is not resolved")
+
+    graph = _empty_entity_graph(config)
+
+    with driver.session() as session:
+        session_record = session.run(
+            f"""
+            MATCH (e:{schema.entity_node} {{id: $entity_id}})
+                  -[:{entity_session_type}]->(s:{schema.session_node})
+            RETURN collect(DISTINCT s.id) AS session_ids
+            """,
+            entity_id=entity_id,
+        ).single()
+        if session_record:
+            graph[schema.session_node] = [
+                str(value) for value in session_record["session_ids"] if value
+            ]
+
+        for node in schema.nodes:
+            graph[node.label] = _collect_node_values(
+                session,
+                entity_id=entity_id,
+                schema=schema,
+                node=node,
+            )
+
+    return graph

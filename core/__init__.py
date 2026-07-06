@@ -36,7 +36,9 @@ from core.graph import (
     empty_extraction_payload,
     extract_entities,
     get_graph_driver,
+    read_entity_graph,
     write_entity_to_graph,
+    write_to_graph,
 )
 
 from core.validation import ConfigValidationError, validate_config
@@ -78,8 +80,10 @@ __all__ = [
     "load_active_config",
     "load_config",
     "match_flag_patterns",
+    "read_entity_graph",
     "resolve_config_path",
     "response_appears_cited",
     "validate_config",
     "write_entity_to_graph",
+    "write_to_graph",
 ]
