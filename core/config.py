@@ -138,15 +138,17 @@ class EntityConfig(BaseModel):
 
 
 class PromptsConfig(BaseModel):
-    """Prompt templates and module reference for the RAG chain."""
+    """Prompt templates for the config-driven RAG chain."""
 
     model_config = ConfigDict(extra="forbid")
 
-    prompt_module: str = "chains.prompts"
-    system_role: Optional[str] = None
-    system_message: Optional[str] = None
-    user_template: Optional[str] = None
-    context_chunk_template: Optional[str] = None
+    system: str = ""
+    entity_context_header: str = ""
+    knowledge_header: str = ""
+    question_header: str = ""
+    response_requirements: str = ""
+    empty_entity_context: str = "(No entity profile provided.)"
+    context_chunk_template: str = ""
     multi_query_template: Optional[str] = None
 
 

@@ -19,6 +19,7 @@ from core.config import (
 )
 from core.embeddings import get_embeddings
 from core.retriever import build_retriever
+from core.chain import build_chain, build_prompt, format_retrieved_context, response_appears_cited
 
 __all__ = [
     "ChunkingConfig",
@@ -35,7 +36,11 @@ __all__ = [
     "SafetyConfig",
     "SessionNotesConfig",
     "UseCaseConfig",
+    "build_chain",
+    "build_prompt",
     "build_retriever",
+    "format_retrieved_context",
     "get_embeddings",
     "load_config",
+    "response_appears_cited",
 ]

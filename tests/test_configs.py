@@ -40,7 +40,8 @@ def test_mental_health_required_fields_present(mental_health_config: UseCaseConf
     assert cfg.chunking.chunk_size
     assert cfg.retrieval.mode
     assert cfg.entities.name
-    assert cfg.prompts.prompt_module
+    assert cfg.prompts.system
+    assert cfg.prompts.knowledge_header
     assert cfg.output_schema.fields
     assert cfg.safety.disclaimer
     assert cfg.evaluation.sample_queries

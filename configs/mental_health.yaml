@@ -160,9 +160,7 @@ entities:
     - page_number
 
 prompts:
-  prompt_module: chains.prompts
-  system_role: clinical_assistant
-  system_message: |
+  system: |
     You are MindBridge, a clinical knowledge assistant for licensed mental health professionals.
 
     Your role is to help therapists find and synthesize information from their indexed clinical corpus
@@ -177,15 +175,11 @@ prompts:
     - Cite sources using the exact document name and page number shown in each context block header.
     - If the context is insufficient, say so clearly. Never invent citations, page numbers, or clinical facts.
     - Treat session notes as confidential records; reference them only to support the therapist's query.
-  user_template: |
-    Answer the therapist's question using only the retrieved clinical context below.
-
-    ## Retrieved context
-    {context}
-
-    ## Therapist question
-    {question}
-
+  entity_context_header: "## Patient context"
+  knowledge_header: "## Retrieved context"
+  question_header: "## Therapist question"
+  empty_entity_context: "(No patient profile provided.)"
+  response_requirements: |
     ## Response requirements
     - Answer concisely and clinically, using only information supported by the context above.
     - Cite every substantive claim with source name and page (e.g., "nice-ng222.pdf, p. 12").
