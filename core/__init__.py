@@ -30,8 +30,11 @@ from core.output_parser import build_output_schema
 from core.safety import apply_safety, build_safety_chain, match_flag_patterns
 
 from core.graph import (
+    build_extraction_chain,
     build_extraction_prompt,
+    build_extraction_schema,
     empty_extraction_payload,
+    extract_entities,
     get_graph_driver,
     write_entity_to_graph,
 )
@@ -59,13 +62,16 @@ __all__ = [
     "UseCaseConfig",
     "apply_safety",
     "build_chain",
+    "build_extraction_chain",
     "build_extraction_prompt",
+    "build_extraction_schema",
     "build_llm",
     "build_output_schema",
     "build_prompt",
     "build_retriever",
     "build_safety_chain",
     "empty_extraction_payload",
+    "extract_entities",
     "format_retrieved_context",
     "get_embeddings",
     "get_graph_driver",

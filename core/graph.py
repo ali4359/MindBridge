@@ -5,9 +5,14 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Type
 
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import Runnable, RunnablePassthrough
 from neo4j import Driver, GraphDatabase, Session
+from pydantic import BaseModel, Field, create_model
 
 from core.config import GraphNodeConfig, GraphSchemaConfig, UseCaseConfig
 
@@ -47,6 +52,27 @@ def get_graph_driver(
     )
 
 
+def build_extraction_schema(config: UseCaseConfig) -> Type[BaseModel]:
+    """Create a Pydantic extraction model from ``config.graph_schema.nodes``."""
+    if config.graph_schema is None:
+        raise ValueError(
+            f"Profile {config.name!r} has no graph_schema; cannot build extraction schema"
+        )
+
+    field_definitions = {
+        node.extraction_key: (
+            list[str],
+            Field(
+                default_factory=list,
+                description=f"Extracted {node.label} entities mentioned in the note",
+            ),
+        )
+        for node in config.graph_schema.nodes
+    }
+    model_name = "".join(part.capitalize() for part in config.name.split("_")) + "Extraction"
+    return create_model(model_name, **field_definitions)
+
+
 def build_extraction_prompt(config: UseCaseConfig) -> str:
     """Build an LLM extraction prompt from the active graph schema."""
     if config.graph_schema is None:
@@ -58,17 +84,52 @@ def build_extraction_prompt(config: UseCaseConfig) -> str:
     template = {
         node.extraction_key: [] for node in schema.nodes
     }
-    keys_json = json.dumps(template, indent=2)
+    keys_json = json.dumps(template, indent=2).replace("{", "{{").replace("}", "}}")
+    node_labels = ", ".join(node.label for node in schema.nodes)
 
     return f"""Extract entities from the following {config.display_name} note.
 
 Return a JSON object with these keys:
 {keys_json}
 
-Only extract what is explicitly mentioned in the note. Return empty lists for keys with
-no matches. Use short canonical phrases for each extracted value.
+Extract only explicitly mentioned entities for: {node_labels}.
+Return empty lists for keys with no matches. Use short canonical phrases for each value.
 
 Return JSON only, with no markdown fences or other text."""
+
+
+def build_extraction_chain(
+    config: UseCaseConfig,
+    llm: BaseChatModel,
+) -> Runnable[str, dict[str, list[str]]]:
+    """Build an LCEL chain that extracts graph entities from session note text."""
+    extraction_model = build_extraction_schema(config)
+    parser = JsonOutputParser(pydantic_object=extraction_model)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", build_extraction_prompt(config) + "\n\n{format_instructions}"),
+            ("human", "{text}"),
+        ]
+    ).partial(format_instructions=parser.get_format_instructions())
+
+    chain: Runnable[str, dict[str, list[str]]] = (
+        {"text": RunnablePassthrough()} | prompt | llm | parser
+    )
+    return chain
+
+
+def extract_entities(
+    text: str,
+    config: UseCaseConfig,
+    llm: BaseChatModel,
+) -> dict[str, list[str]]:
+    """Run the extraction chain and return a validated entity dictionary."""
+    chain = build_extraction_chain(config, llm)
+    result = chain.invoke(text)
+    if isinstance(result, BaseModel):
+        return result.model_dump()
+    return dict(result)
 
 
 def empty_extraction_payload(config: UseCaseConfig) -> dict[str, list[str]]:
