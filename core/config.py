@@ -157,6 +157,7 @@ class OutputSchemaConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    model_name: str = ""
     fields: list[str] = Field(default_factory=list)
     require_citations: bool = True
     pdf_citation_pattern: str = r"\.pdf\b"

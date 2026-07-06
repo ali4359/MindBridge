@@ -196,6 +196,7 @@ prompts:
     Provide each alternative on its own line. Original question: {question}
 
 output_schema:
+  model_name: SOAPNote
   fields:
     - subjective
     - objective
