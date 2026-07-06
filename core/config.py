@@ -296,3 +296,21 @@ def load_config(path: str) -> UseCaseConfig:
         )
 
     return UseCaseConfig.model_validate(raw)
+
+
+DEFAULT_USE_CASE_CONFIG = "configs/mental_health.yaml"
+USE_CASE_CONFIG_ENV = "USE_CASE_CONFIG"
+
+
+def resolve_config_path(path: Optional[str] = None) -> str:
+    """Resolve the active use-case YAML path from arg, env, or platform default."""
+    if path:
+        return path
+    import os
+
+    return os.environ.get(USE_CASE_CONFIG_ENV, DEFAULT_USE_CASE_CONFIG)
+
+
+def load_active_config(path: Optional[str] = None) -> UseCaseConfig:
+    """Load the use-case profile selected by ``path`` or ``USE_CASE_CONFIG``."""
+    return load_config(resolve_config_path(path))

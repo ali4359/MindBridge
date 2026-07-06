@@ -151,3 +151,48 @@ def build_ingestion_pipeline(
 ) -> IngestionPipeline:
     """Factory for a config-bound ingestion pipeline."""
     return IngestionPipeline(config=config, base_dir=base_dir or REPO_ROOT)
+
+
+def index_corpus(
+    config: UseCaseConfig,
+    *,
+    base_dir: Path = REPO_ROOT,
+    reset: bool = True,
+):
+    """Load, chunk, embed, and persist the corpus for a use-case profile."""
+    from core.vectorstore import build_vectorstore
+
+    pipeline = build_ingestion_pipeline(config, base_dir=base_dir)
+    chunks = pipeline.run()
+    if not chunks:
+        raise SystemExit(
+            f"No chunks produced for {config.name!r}. "
+            f"Add PDFs under {config.sources_dir(base=base_dir)}"
+        )
+    return build_vectorstore(chunks, config, base_dir=base_dir, reset=reset)
+
+
+def main() -> None:
+    """CLI: ``USE_CASE_CONFIG=configs/legal.yaml python -m core.ingestion``"""
+    from dotenv import load_dotenv
+
+    from core.config import USE_CASE_CONFIG_ENV, load_active_config, resolve_config_path
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    load_dotenv(REPO_ROOT / ".env")
+
+    config = load_active_config()
+    config_path = resolve_config_path()
+    logger.info("Use case: %s (%s)", config.display_name, config_path)
+
+    vectorstore = index_corpus(config)
+    print(
+        f"\nIndexed {vectorstore._collection.count()} vectors "
+        f"→ {config.chroma_path(base=REPO_ROOT)} "
+        f"[{config.data.collection}]"
+    )
+    print(f"Set {USE_CASE_CONFIG_ENV}={config_path!r} to reuse this profile.")
+
+
+if __name__ == "__main__":
+    main()
