@@ -63,5 +63,14 @@ def validate_config(
             f"expected one of {sorted(VALID_RETRIEVAL_MODES)}"
         )
 
+    if config.graph_schema is not None:
+        entity_name = config.entities.name.strip().lower()
+        graph_entity = config.graph_schema.entity_node.strip().lower()
+        if entity_name != graph_entity:
+            violations.append(
+                "graph_schema.entity_node must align with entities.name "
+                f"({config.graph_schema.entity_node!r} vs {config.entities.name!r})"
+            )
+
     if violations:
         raise ConfigValidationError(violations)

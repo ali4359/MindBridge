@@ -74,6 +74,36 @@ entities:
     - doc_type
     - page_number
 
+graph_schema:
+  entity_node: Client
+  session_node: Case
+  nodes:
+    - label: Statute
+      extraction_key: statutes
+      identity: name
+    - label: Precedent
+      extraction_key: precedents
+      identity: name
+    - label: Argument
+      extraction_key: arguments
+      identity: name
+    - label: Outcome
+      extraction_key: outcomes
+      identity: name
+  relationships:
+    - type: INVOLVED_IN
+      from: Client
+      to: Case
+    - type: CITES
+      from: Case
+      to: Precedent
+    - type: GOVERNED_BY
+      from: Case
+      to: Statute
+    - type: HAS_OUTCOME
+      from: Case
+      to: Outcome
+
 prompts:
   system: |
     You are LexBridge, a legal research assistant for licensed attorneys and paralegals.
