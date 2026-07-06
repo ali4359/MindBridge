@@ -1,0 +1,185 @@
+# LexBridge legal document assistant — second platform use case.
+# Load with: from core import load_config; cfg = load_config("configs/legal.yaml")
+
+name: legal
+display_name: LexBridge Legal Research Assistant
+description: >-
+  Grounded legal research over case law, contracts, and statutes for licensed
+  attorneys and paralegals. Research support only — not legal advice.
+
+data_sources:
+  - folder: case_law
+    doc_type: case_law
+  - folder: contracts
+    doc_type: contract
+  - folder: statutes
+    doc_type: statute
+
+data:
+  sources_dir: data/legal
+  chroma_path: data/chromadb/legal
+  collection: lexbridge
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_dim: 384
+  embedding_sample_sentence: >-
+    A contract is enforceable when offer, acceptance, and consideration are present.
+  user_agent: >-
+    LexBridge/0.1 (+https://github.com/mindbridge; legal research RAG demo; contact: local-dev)
+  download_sources: []
+
+chunking:
+  chunk_size: 800
+  chunk_overlap: 100
+  separators:
+    - "\n\n"
+    - "\n"
+    - "(?<=[.!?])\\s+"
+    - " "
+    - ""
+  is_separator_regex: true
+  min_chunks: 100
+
+retrieval:
+  mode: hybrid
+  top_k: 6
+  bm25_weight: 0.4
+  vector_weight: 0.6
+  rerank_model: ms-marco-MiniLM-L-12-v2
+  rerank_top_n: 5
+  multi_query_variants: 3
+  enable_multi_query: false
+  enable_rerank: true
+
+entities:
+  name: client
+  profile_fields:
+    - matter_type
+    - jurisdiction
+    - parties
+    - key_dates
+    - relief_sought
+    - opposing_counsel
+    - risk_factors
+    - billing_code
+  doc_types:
+    - case_law
+    - contract
+    - statute
+  category_to_doc_type:
+    case_law: case_law
+    contracts: contract
+    statutes: statute
+  metadata_fields:
+    - source
+    - doc_type
+    - page_number
+
+prompts:
+  system: |
+    You are LexBridge, a legal research assistant for licensed attorneys and paralegals.
+
+    Your role is to help legal professionals find and synthesize information from their indexed
+    corpus (case law, contracts, and statutes).
+
+    You are a legal research tool, NOT a lawyer. You do not provide legal advice, predict case
+    outcomes, create attorney-client relationships, or replace professional legal judgment.
+    Attorneys remain solely responsible for case strategy and client counsel.
+
+    When answering:
+    - Ground every factual claim in the retrieved context provided by the user message.
+    - Cite sources using the exact document name and page number shown in each context block header.
+    - If the context is insufficient, say so clearly. Never invent citations, page numbers, or legal authority.
+    - Treat client matter details as confidential; reference them only to support the attorney's query.
+  entity_context_header: "## Client context"
+  knowledge_header: "## Retrieved legal authority"
+  question_header: "## Attorney question"
+  empty_entity_context: "(No client profile provided.)"
+  response_requirements: |
+    ## Response requirements
+    - Structure substantive answers in IRAC format (Issue, Rule, Analysis, Conclusion) when appropriate.
+    - Answer using only information supported by the retrieved context above.
+    - Cite every substantive claim with source name and page (e.g., "smith-v-jones.pdf, p. 12").
+    - When multiple authorities support a point, cite each relevant source.
+    - If the context does not contain enough information, state what is missing rather than guessing.
+    - Do not state or imply guaranteed outcomes or direct the attorney to take a specific action.
+  context_chunk_template: |
+    [{index}] Source: {source} | Page: {page_number} | Type: {doc_type}
+    {content}
+  multi_query_template: |
+    You are assisting retrieval for a legal knowledge base
+    (coverage includes case law, contracts, and statutes).
+    Generate {num_variants} different versions of the user question to improve recall over
+    keyword and semantic search. Use legal terminology and synonyms where appropriate.
+    Provide each alternative on its own line. Original question: {question}
+
+output_schema:
+  model_name: LegalBrief
+  fields:
+    - issue
+    - rule
+    - analysis
+    - conclusion
+  require_citations: true
+  pdf_citation_pattern: '\.pdf\b'
+  page_citation_pattern: '\bp\.?\s*\d+'
+  empty_context_message: "(No relevant legal authority retrieved.)"
+
+safety:
+  enabled: true
+  audience: licensed attorneys and paralegals
+  disclaimer: >-
+    This assistant is a legal research tool, not a lawyer. It does not provide legal advice,
+    predict outcomes, or replace professional legal judgment.
+  fallback_message: >-
+    I cannot provide that response. This assistant does not give legal advice, guarantee outcomes,
+    or direct litigation strategy. Please consult a qualified attorney.
+  prohibited_capabilities:
+    - legal_advice
+    - outcome_prediction
+    - guaranteed_result
+    - attorney_client_relationship
+  flag_patterns:
+    - '(?i)you will definitely win'
+    - '(?i)guaranteed outcome'
+    - '(?i)I advise you to'
+    - '(?i)\b(guaranteed to win|will definitely win|certain victory|assured outcome)\b'
+    - '(?i)\b(100% chance of winning|no risk of losing)\b'
+
+evaluation:
+  golden_set: evaluation/golden/legal.jsonl
+  ragas_target_scores:
+    faithfulness: 0.80
+    answer_relevancy: 0.75
+    context_precision: 0.70
+    context_recall: 0.70
+  retrieval_precision_threshold: 6
+  retrieval_case_count: 6
+  retrieval_top_n_check: 3
+  retrieval_baseline_cases:
+    - query: breach of contract damages foreseeability
+      expected_source: hadley-v-baxendale.pdf
+    - query: non-compete clause reasonableness standard
+      expected_source: sample-employment-contract.pdf
+    - query: statute of limitations contract claims
+      expected_source: ucc-article-2.pdf
+    - query: mutual assent offer acceptance
+      expected_source: restatement-contracts.pdf
+    - query: summary judgment standard genuine dispute
+      expected_source: celotex-v-catrett.pdf
+    - query: indemnification clause scope
+      expected_source: sample-vendor-contract.pdf
+  keyword_test_queries:
+    - breach of contract damages
+    - non-compete enforceability
+    - statute of limitations contract
+  hybrid_test_query: breach of contract damages foreseeability
+  similarity_test_query: contract enforceability elements
+  sample_queries:
+    - What elements must be proven for breach of contract under the retrieved authorities?
+    - How do courts evaluate the enforceability of a non-compete clause in this jurisdiction?
+    - What does the statute say about the limitations period for contract claims?
+
+llm:
+  model: llama-3.3-70b-versatile
+  temperature: 0.0
+  max_tokens: 1024
