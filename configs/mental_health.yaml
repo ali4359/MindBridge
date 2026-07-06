@@ -1,0 +1,282 @@
+# MindBridge mental-health reference deployment — all domain constants live here.
+# Load with: from core import load_config; cfg = load_config("configs/mental_health.yaml")
+
+name: mental_health
+display_name: MindBridge Clinical Copilot
+description: >-
+  Grounded Q&A for licensed mental health professionals over clinical guidelines,
+  CBT/DBT workbooks, and synthetic psychotherapy session notes.
+
+data_sources:
+  - folder: guidelines
+    doc_type: guideline
+  - folder: session_notes
+    doc_type: session_note
+  - folder: research
+    doc_type: research
+  - folder: workbooks
+    doc_type: research
+
+data:
+  sources_dir: data
+  chroma_path: data/chromadb
+  collection: mindbridge
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  embedding_dim: 384
+  embedding_sample_sentence: >-
+    Cognitive behavioral therapy helps patients identify unhelpful thought patterns.
+  user_agent: >-
+    MindBridge/0.1 (+https://github.com/mindbridge; research RAG demo; contact: local-dev)
+  download_sources:
+    - category: guidelines
+      filename: nice-ng222-depression.pdf
+      title: "NICE NG222 — Depression in adults: treatment and management"
+      url: >-
+        https://www.nice.org.uk/guidance/ng222/resources/depression-in-adults-treatment-and-management-pdf-66143832307909
+      license: "© NICE — free for personal/educational use via nice.org.uk"
+    - category: guidelines
+      filename: nice-cg113-anxiety.pdf
+      title: "NICE CG113 — GAD and panic disorder in adults: management"
+      url: >-
+        https://www.nice.org.uk/guidance/cg113/resources/generalised-anxiety-disorder-and-panic-disorder-in-adults-management-pdf-35109387756997
+      license: "© NICE — free for personal/educational use via nice.org.uk"
+    - category: guidelines
+      filename: who-mhgap-intervention-guide-v2.pdf
+      title: WHO mhGAP Intervention Guide v2.0
+      url: >-
+        https://iris.who.int/server/api/core/bitstreams/6ded7ffd-9d69-493a-b48a-0b3e6250c173/content
+      license: "© WHO — non-commercial use; see who.int copyright terms"
+    - category: workbooks
+      filename: think-cbt-workbook.pdf
+      title: Think CBT Workbook (Psychology Tools / Think CBT)
+      url: https://www.thinkcbt.com/images/Downloads/PRINT-WORKBOOK-THINK-CBT-V-09.05.17.pdf
+      license: "© Think CBT — free static PDF for personal/self-help use"
+    - category: workbooks
+      filename: cbt-worksheets-getselfhelp.pdf
+      title: CBT Worksheets compilation (GetSelfHelp.co.uk)
+      urls:
+        - https://www.getselfhelp.co.uk/docs/ThoughtRecordSheet7.pdf
+        - https://www.getselfhelp.co.uk/docs/UnhelpfulThinkingHabits.pdf
+        - https://www.getselfhelp.co.uk/docs/ACELog.pdf
+        - https://www.getselfhelp.co.uk/docs/ActivityDiary.pdf
+        - https://www.get.gg/docs/ProblemSolvingWorksheet.pdf
+      license: "© GetSelfHelp.co.uk — free CBT resources for personal use"
+      compiled: true
+    - category: workbooks
+      filename: dbt-skills-workbook-mckay.pdf
+      title: The Dialectical Behavior Therapy Skills Workbook (McKay et al.)
+      url: https://morethantherapy.org/assets/files/The-DBTTherapySkillsWorkbook.pdf
+      license: "© New Harbinger — sample/educational hosting; not for redistribution"
+  session_notes:
+    output_dir: data/session_notes
+    count: 20
+    model: llama-3.3-70b-versatile
+    temperature: 0.8
+    max_tokens: 900
+    pause_seconds: 0.5
+    generation_prompt: |
+      You are assisting a clinical documentation demo for a mental-health RAG system.
+      Write one realistic but entirely fictional therapy session note.
+
+      Requirements:
+      - Format: SOAP (Subjective, Objective, Assessment, Plan) with clear section headers.
+      - Length: 250–400 words.
+      - Setting: outpatient CBT or DBT-informed psychotherapy.
+      - Include: presenting concern, interventions used (e.g. thought record, behavioral activation,
+        distress tolerance, mindfulness), client response, risk screen (deny SI/HI unless scenario says otherwise),
+        and homework.
+      - Use neutral clinical tone. No real names — use "Client" or initials only.
+      - Scenario #{session_number}: {scenario}
+
+      Output only the session note, no preamble.
+    scenarios:
+      - First session — generalized anxiety, psychoeducation and breathing reframe.
+      - Session 2 — depression, behavioral activation scheduling.
+      - Session 3 — panic attacks, interoceptive exposure planning.
+      - Session 4 — social anxiety, cognitive restructuring of mind-reading thoughts.
+      - Session 5 — insomnia comorbid with depression, sleep hygiene and stimulus control.
+      - Session 6 — workplace burnout, values clarification and boundary setting.
+      - Session 7 — grief — normalizing waves of emotion, continuing bonds framework.
+      - Session 8 — OCD intrusive thoughts — ERP hierarchy introduction.
+      - Session 9 — PTSD — grounding after trigger, safety planning review.
+      - Session 10 — DBT skills — distress tolerance with TIPP and self-soothe.
+      - Session 11 — DBT skills — emotion regulation, PLEASE skills check-in.
+      - Session 12 — relationship conflict — DEAR MAN interpersonal effectiveness practice.
+      - Session 13 — low self-esteem — core belief log and evidence column.
+      - Session 14 — medication adherence ambivalence — motivational interviewing.
+      - Session 15 — relapse prevention — early warning signs and coping card.
+      - Session 16 — adolescent transition (age 17) — parent involvement and autonomy.
+      - Session 17 — perinatal anxiety — catastrophic thinking about infant safety.
+      - Session 18 — substance use + depression — functional analysis of use episode.
+      - Session 19 — chronic pain and mood — pacing and acceptance strategies.
+      - Session 20 — termination session — review gains, booster plan, warm handoff.
+
+chunking:
+  chunk_size: 800
+  chunk_overlap: 100
+  separators:
+    - "\n\n"
+    - "\n"
+    - "(?<=[.!?])\\s+"
+    - " "
+    - ""
+  is_separator_regex: true
+  min_chunks: 500
+
+retrieval:
+  mode: hybrid
+  top_k: 6
+  bm25_weight: 0.4
+  vector_weight: 0.6
+  rerank_model: ms-marco-MiniLM-L-12-v2
+  rerank_top_n: 5
+  multi_query_variants: 3
+  enable_multi_query: false
+  enable_rerank: true
+
+entities:
+  name: patient
+  profile_fields:
+    - presenting_concern
+    - primary_diagnosis
+    - comorbidities
+    - medications
+    - treatment_modality
+    - risk_screen
+    - session_number
+    - homework_assigned
+  doc_types:
+    - guideline
+    - session_note
+    - research
+  category_to_doc_type:
+    guidelines: guideline
+    session_notes: session_note
+    research: research
+    workbooks: research
+  metadata_fields:
+    - source
+    - doc_type
+    - page_number
+
+prompts:
+  system: |
+    You are MindBridge, a clinical knowledge assistant for licensed mental health professionals.
+
+    Your role is to help therapists find and synthesize information from their indexed clinical corpus
+    (treatment guidelines, psychotherapy session notes, and CBT/DBT reference material).
+
+    You are a clinical knowledge tool, NOT a clinician. You do not diagnose, prescribe treatment, provide
+    crisis intervention, or replace professional clinical judgment. Therapists remain solely responsible
+    for patient care decisions.
+
+    When answering:
+    - Ground every factual claim in the retrieved context provided by the user message.
+    - Cite sources using the exact document name and page number shown in each context block header.
+    - If the context is insufficient, say so clearly. Never invent citations, page numbers, or clinical facts.
+    - Treat session notes as confidential records; reference them only to support the therapist's query.
+  entity_context_header: "## Patient context"
+  knowledge_header: "## Retrieved context"
+  question_header: "## Therapist question"
+  empty_entity_context: "(No patient profile provided.)"
+  response_requirements: |
+    ## Response requirements
+    - Answer concisely and clinically, using only information supported by the context above.
+    - Cite every substantive claim with source name and page (e.g., "nice-ng222.pdf, p. 12").
+    - When multiple sources support a point, cite each relevant source.
+    - If the context does not contain enough information, state what is missing rather than guessing.
+  context_chunk_template: |
+    [{index}] Source: {source} | Page: {page_number} | Type: {doc_type}
+    {content}
+  multi_query_template: |
+    You are assisting retrieval for a mental-health clinical knowledge base
+    (coverage includes CBT, DBT, psychotherapy notes, and treatment guidelines).
+    Generate {num_variants} different versions of the user question to improve recall over
+    keyword and semantic search. Use clinical terminology and synonyms where appropriate.
+    Provide each alternative on its own line. Original question: {question}
+
+output_schema:
+  model_name: SOAPNote
+  fields:
+    - subjective
+    - objective
+    - assessment
+    - plan
+  require_citations: true
+  pdf_citation_pattern: '\.pdf\b'
+  page_citation_pattern: '\bp\.?\s*\d+'
+  empty_context_message: "(No relevant context retrieved.)"
+
+safety:
+  enabled: true
+  audience: licensed mental health professionals
+  disclaimer: >-
+    This assistant is a clinical knowledge tool, not a clinician. It does not diagnose,
+    prescribe treatment, provide crisis intervention, or replace professional clinical judgment.
+  fallback_message: >-
+    I cannot provide that response. This assistant does not give prescriptive medical advice,
+    crisis intervention, or clinical directives. Please consult a qualified mental health professional.
+  prohibited_capabilities:
+    - diagnose
+    - prescribe
+    - crisis_intervention
+    - replace_clinical_judgment
+  flag_patterns:
+    - '(?i)\b(suicid(e|al)|self[- ]?harm|kill myself|end my life)\b'
+    - '(?i)\b(homicid(e|al)|hurt (someone|others))\b'
+    - '(?i)\b(overdose|actively planning)\b'
+    - '(?i)\b(can''t go on|no reason to live)\b'
+    - '(?i)\b(cutting|burning myself)\b'
+    - '(?i)\b(you should (take|start)|must take|i prescribe)\b.*\b(medication|mg|dose|antidepressant|benzodiazepine|ssri|snri)\b'
+    - '(?i)\b(diagnose (you|the patient) with|you (have|are diagnosed with) (depression|anxiety|bipolar|ptsd))\b'
+
+evaluation:
+  golden_set: evaluation/golden/mental_health.jsonl
+  ragas_target_scores:
+    faithfulness: 0.80
+    answer_relevancy: 0.75
+    context_precision: 0.70
+    context_recall: 0.70
+  retrieval_precision_threshold: 8
+  retrieval_case_count: 10
+  retrieval_top_n_check: 3
+  retrieval_baseline_cases:
+    - query: DBT distress tolerance TIPP skills
+      expected_source: dbt-skills-workbook-mckay.pdf
+    - query: NICE guideline antidepressant first line treatment
+      expected_source: nice-ng222-depression.pdf
+    - query: generalized anxiety disorder stepped care NICE
+      expected_source: nice-cg113-anxiety.pdf
+    - query: mhGAP depression intervention primary care
+      expected_source: who-mhgap-intervention-guide-v2.pdf
+    - query: problem solving worksheet getselfhelp
+      expected_source: cbt-worksheets-getselfhelp.pdf
+    - query: Think CBT workbook behavioral experiments
+      expected_source: think-cbt-workbook.pdf
+    - query: dialectical behavior therapy emotion regulation
+      expected_source: dbt-skills-workbook-mckay.pdf
+    - query: NICE CG113 benzodiazepine anxiety
+      expected_source: nice-cg113-anxiety.pdf
+    - query: WHO mhGAP epilepsy management
+      expected_source: who-mhgap-intervention-guide-v2.pdf
+    - query: NICE NG222 SSRIs depression adults
+      expected_source: nice-ng222-depression.pdf
+  keyword_test_queries:
+    - DBT distress tolerance skills
+    - cognitive restructuring thought record
+    - NICE guideline antidepressant first line
+  hybrid_test_query: DBT distress tolerance skills
+  similarity_test_query: CBT for depression
+  sample_queries:
+    - >-
+      What does the NICE guideline recommend as first-line pharmacological
+      treatment for depression in adults?
+    - What DBT distress tolerance skills can I teach a client for crisis survival?
+    - >-
+      How can I use a thought record worksheet with a client who has
+      generalized anxiety?
+
+llm:
+  model: llama-3.3-70b-versatile
+  temperature: 0.0
+  max_tokens: 1024

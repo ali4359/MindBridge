@@ -7,6 +7,9 @@ import os
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from core.embeddings import embed_query as _embed_query
+from core.embeddings import get_embeddings
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -16,18 +19,13 @@ SAMPLE_SENTENCE = "Cognitive behavioral therapy helps patients identify unhelpfu
 
 
 def create_embeddings() -> HuggingFaceEmbeddings:
-    """Return a CPU-backed MiniLM embedder with L2-normalized vectors."""
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    """Return the shared CPU-backed MiniLM embedder (delegates to ``core.embeddings``)."""
+    return get_embeddings()
 
 
 def embed_query(text: str, *, embeddings: HuggingFaceEmbeddings | None = None) -> list[float]:
     """Embed a single query string."""
-    model = embeddings or create_embeddings()
-    return model.embed_query(text)
+    return _embed_query(text, embeddings=embeddings)
 
 
 def main() -> None:
