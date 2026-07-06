@@ -213,6 +213,9 @@ safety:
   disclaimer: >-
     This assistant is a clinical knowledge tool, not a clinician. It does not diagnose,
     prescribe treatment, provide crisis intervention, or replace professional clinical judgment.
+  fallback_message: >-
+    I cannot provide that response. This assistant does not give prescriptive medical advice,
+    crisis intervention, or clinical directives. Please consult a qualified mental health professional.
   prohibited_capabilities:
     - diagnose
     - prescribe
@@ -224,6 +227,8 @@ safety:
     - '(?i)\b(overdose|actively planning)\b'
     - '(?i)\b(can''t go on|no reason to live)\b'
     - '(?i)\b(cutting|burning myself)\b'
+    - '(?i)\b(you should (take|start)|must take|i prescribe)\b.*\b(medication|mg|dose|antidepressant|benzodiazepine|ssri|snri)\b'
+    - '(?i)\b(diagnose (you|the patient) with|you (have|are diagnosed with) (depression|anxiety|bipolar|ptsd))\b'
 
 evaluation:
   golden_set: evaluation/golden/mental_health.jsonl

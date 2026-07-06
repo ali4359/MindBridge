@@ -186,6 +186,10 @@ class SafetyConfig(BaseModel):
         ]
     )
     flag_patterns: list[str] = Field(default_factory=list)
+    fallback_message: str = (
+        "I cannot provide that response because it may violate safety guidelines "
+        "for this use case. Please rephrase your request or consult a qualified professional."
+    )
 
 
 class RetrievalBaselineCase(BaseModel):
