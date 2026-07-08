@@ -79,6 +79,46 @@ def load_vectorstore(
     return vectorstore
 
 
+def documents_from_vectorstore(vectorstore: Chroma) -> list[Document]:
+    """Materialise all persisted chunks as LangChain Documents (for BM25/hybrid)."""
+    result = vectorstore._collection.get(include=["documents", "metadatas"])
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+    docs: list[Document] = []
+    for content, metadata in zip(documents, metadatas):
+        if not content:
+            continue
+        docs.append(
+            Document(
+                page_content=content,
+                metadata=dict(metadata or {}),
+            )
+        )
+    return docs
+
+
+def lookup_entity_documents(
+    vectorstore: Chroma,
+    entity_id: str,
+) -> list[Document]:
+    """Return Chroma chunks whose metadata ``entity_id`` matches ``entity_id``."""
+    result = vectorstore._collection.get(
+        where={"entity_id": entity_id},
+        include=["documents", "metadatas"],
+    )
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+    docs: list[Document] = []
+    for content, metadata in zip(documents, metadatas):
+        docs.append(
+            Document(
+                page_content=content or "",
+                metadata=dict(metadata or {}),
+            )
+        )
+    return docs
+
+
 def append_documents(
     documents: list[Document],
     config: UseCaseConfig,
