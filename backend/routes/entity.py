@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from backend.schemas import EntityProfileResponse
 from backend.services import profile_from_documents, session_count_from_documents
-from core.graph import read_entity_graph
+from core.graph import find_similar_entities, read_entity_graph
 from core.vectorstore import lookup_entity_documents
 
 router = APIRouter(tags=["entity"])
@@ -51,7 +51,7 @@ def get_entity(entity_id: str, request: Request) -> EntityProfileResponse:
 
 @router.get("/entity/{entity_id}/graph")
 def get_entity_graph(entity_id: str, request: Request) -> dict:
-    """Return the full Neo4j subgraph for ``entity_id`` (config-driven labels)."""
+    """Return enriched graph traversal payload for ``entity_id``."""
     state = request.app.state
     config = state.config
     if config.graph_schema is None:
@@ -64,6 +64,75 @@ def get_entity_graph(entity_id: str, request: Request) -> dict:
         raise HTTPException(status_code=503, detail="Neo4j driver is not connected")
 
     try:
-        return read_entity_graph(entity_id, config, driver)
+        graph = read_entity_graph(entity_id, config, driver)
+        schema = config.graph_schema
+        session_key = schema.session_node
+
+        diagnoses_key = next(
+            (
+                node.label
+                for node in schema.nodes
+                if "diagnos" in node.extraction_key.lower()
+                or "issue" in node.extraction_key.lower()
+            ),
+            None,
+        )
+        interventions_key = next(
+            (
+                node.label
+                for node in schema.nodes
+                if "intervention" in node.extraction_key.lower()
+                or "argument" in node.extraction_key.lower()
+                or "precedent" in node.extraction_key.lower()
+            ),
+            None,
+        )
+        medications_key = next(
+            (
+                node.label
+                for node in schema.nodes
+                if "medication" in node.extraction_key.lower()
+            ),
+            None,
+        )
+        symptoms_key = next(
+            (
+                node.label
+                for node in schema.nodes
+                if "symptom" in node.extraction_key.lower()
+            ),
+            None,
+        )
+        worked_key = next(
+            (
+                node.label
+                for node in schema.nodes
+                if "homework" in node.extraction_key.lower()
+                or "outcome" in node.extraction_key.lower()
+                or "response" in node.extraction_key.lower()
+            ),
+            None,
+        )
+
+        similar_entities = find_similar_entities(entity_id, config, driver)
+        sessions = [str(item) for item in graph.get(session_key, [])]
+        symptoms = [str(item) for item in graph.get(symptoms_key or "", [])]
+
+        return {
+            "entity_id": entity_id,
+            "diagnoses": [str(item) for item in graph.get(diagnoses_key or "", [])],
+            "sessions": sessions,
+            "interventions_tried": [
+                str(item) for item in graph.get(interventions_key or "", [])
+            ],
+            "what_worked": [str(item) for item in graph.get(worked_key or "", [])],
+            "medications": [str(item) for item in graph.get(medications_key or "", [])],
+            "symptom_trajectory": {
+                "sessions": sessions,
+                "symptoms": symptoms,
+            },
+            "similar_entities": similar_entities,
+            "subgraph": graph,
+        }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc

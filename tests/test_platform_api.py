@@ -165,13 +165,31 @@ def test_generate_output_legal_profile_returns_legal_brief(monkeypatch) -> None:
 
 def test_entity_graph_requires_schema(light_client) -> None:
     light_client.app.state.graph_driver = MagicMock()
-    with patch(
-        "backend.routes.entity.read_entity_graph",
-        return_value={"Session": ["patient-1-session-1"], "Diagnosis": ["GAD"]},
+    with (
+        patch(
+            "backend.routes.entity.read_entity_graph",
+            return_value={
+                "Session": ["patient-1-session-1"],
+                "Diagnosis": ["GAD"],
+                "Intervention": ["thought record"],
+                "Symptom": ["worry"],
+                "Medication": ["sertraline 50mg"],
+                "Homework": ["daily thought log"],
+            },
+        ),
+        patch(
+            "backend.routes.entity.find_similar_entities",
+            return_value=["patient-7", "patient-9"],
+        ),
     ):
         response = light_client.get("/entity/patient-1/graph")
     assert response.status_code == 200
-    assert response.json()["Diagnosis"] == ["GAD"]
+    body = response.json()
+    assert body["entity_id"] == "patient-1"
+    assert body["diagnoses"] == ["GAD"]
+    assert body["interventions_tried"] == ["thought record"]
+    assert body["similar_entities"] == ["patient-7", "patient-9"]
+    assert body["subgraph"]["Diagnosis"] == ["GAD"]
 
 
 def test_query_stream_emits_sse_tokens(light_client) -> None:
