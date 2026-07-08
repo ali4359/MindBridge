@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -10,6 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import Runnable, RunnableLambda, RunnableParallel, RunnablePassthrough
+from neo4j import Driver
 
 from core.config import UseCaseConfig
 
@@ -36,6 +38,46 @@ def format_retrieved_context(documents: list[Document], config: UseCaseConfig) -
             )
         )
     return "\n\n".join(blocks)
+
+
+def format_entity_graph(
+    graph: dict[str, list[str]],
+    config: UseCaseConfig,
+) -> str:
+    """Format a Neo4j entity subgraph as structured prompt context."""
+    if not graph:
+        return config.prompts.empty_entity_context
+
+    lines: list[str] = []
+    for label, values in graph.items():
+        if values:
+            lines.append(f"- {label}: {', '.join(str(v) for v in values)}")
+        else:
+            lines.append(f"- {label}: (none)")
+
+    return "\n".join(lines) if lines else config.prompts.empty_entity_context
+
+
+def load_entity_context(
+    *,
+    entity_id: Optional[str],
+    config: UseCaseConfig,
+    driver: Optional[Driver] = None,
+) -> str:
+    """Load and format graph context for ``entity_id``, or the empty placeholder."""
+    if not entity_id or config.graph_schema is None:
+        return config.prompts.empty_entity_context
+
+    from core.graph import get_graph_driver, read_entity_graph
+
+    owns_driver = driver is None
+    resolved = driver if driver is not None else get_graph_driver()
+    try:
+        graph = read_entity_graph(entity_id, config, resolved)
+        return format_entity_graph(graph, config)
+    finally:
+        if owns_driver:
+            resolved.close()
 
 
 def _compose_human_template(config: UseCaseConfig) -> str:
@@ -89,19 +131,29 @@ def build_chain(
     config: UseCaseConfig,
     retriever: BaseRetriever,
     llm: BaseChatModel,
+    *,
+    entity_id: Optional[str] = None,
+    driver: Optional[Driver] = None,
 ) -> Runnable[str, str]:
-    """Assemble a config-driven RAG chain using LCEL pipe syntax."""
+    """Assemble a config-driven RAG chain using LCEL pipe syntax.
+
+    When ``entity_id`` is provided, the chain calls ``read_entity_graph()``,
+    formats the subgraph, and injects it under ``config.prompts.entity_context_header``.
+    The LLM then sees: entity graph summary + retrieved knowledge chunks + question.
+    """
     prompt = build_prompt(config)
-    empty_entity_context = config.prompts.empty_entity_context
 
     def _format_context(documents: list[Document]) -> str:
         return format_retrieved_context(documents, config)
+
+    def _entity_context(_question: str) -> str:
+        return load_entity_context(entity_id=entity_id, config=config, driver=driver)
 
     chain: Runnable[str, str] = (
         RunnableParallel(
             {
                 "context": retriever | RunnableLambda(_format_context),
-                "entity_context": RunnableLambda(lambda _question: empty_entity_context),
+                "entity_context": RunnableLambda(_entity_context),
                 "question": RunnablePassthrough(),
             }
         )
