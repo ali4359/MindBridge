@@ -77,3 +77,33 @@ def load_vectorstore(
         persist_directory,
     )
     return vectorstore
+
+
+def append_documents(
+    documents: list[Document],
+    config: UseCaseConfig,
+    *,
+    base_dir: Path = REPO_ROOT,
+) -> int:
+    """Embed and append documents into the persisted Chroma collection."""
+    if not documents:
+        return 0
+
+    persist_directory = config.chroma_path(base=base_dir)
+    persist_directory.mkdir(parents=True, exist_ok=True)
+
+    embeddings = get_embeddings(config)
+    vectorstore = Chroma(
+        collection_name=config.data.collection,
+        embedding_function=embeddings,
+        persist_directory=str(persist_directory),
+    )
+    vectorstore.add_documents(documents)
+    logger.info(
+        "Appended %d document(s) → %s (collection=%s, total=%d)",
+        len(documents),
+        persist_directory,
+        config.data.collection,
+        vectorstore._collection.count(),
+    )
+    return len(documents)

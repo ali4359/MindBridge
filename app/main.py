@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from backend.routes import ingest_router
 from core.config import load_active_config
 from core.validation import validate_config
 
@@ -29,6 +30,7 @@ app = FastAPI(
     description="Config-driven RAG platform — profile selected via USE_CASE_CONFIG",
     lifespan=lifespan,
 )
+app.include_router(ingest_router)
 
 
 @app.get("/health")

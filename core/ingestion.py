@@ -172,6 +172,114 @@ def index_corpus(
     return build_vectorstore(chunks, config, base_dir=base_dir, reset=reset)
 
 
+def _session_doc_type(config: UseCaseConfig) -> str:
+    """Resolve the session-note doc_type from the active profile."""
+    for source in config.data_sources:
+        if "session" in source.folder.lower() or "session" in source.doc_type.lower():
+            return source.doc_type
+    mapping = config.entities.category_to_doc_type
+    if "session_notes" in mapping:
+        return mapping["session_notes"]
+    for doc_type in config.entities.doc_types:
+        if "session" in doc_type.lower():
+            return doc_type
+    return "session_note"
+
+
+def chunk_session_note(
+    note_text: str,
+    config: UseCaseConfig,
+    *,
+    entity_id: str,
+    session_number: int,
+    session_date: str,
+    session_id: Optional[str] = None,
+) -> list[Document]:
+    """Chunk a session note string into Documents with entity metadata."""
+    text = note_text.strip()
+    if not text:
+        return []
+
+    resolved_session_id = session_id or f"{entity_id}-session-{session_number}"
+    doc_type = _session_doc_type(config)
+    source = f"session_note:{resolved_session_id}"
+
+    document = Document(
+        page_content=text,
+        metadata={
+            "source": source,
+            "doc_type": doc_type,
+            "page_number": 1,
+            "entity_id": entity_id,
+            "session_number": session_number,
+            "session_date": session_date,
+            "session_id": resolved_session_id,
+        },
+    )
+    return chunk_documents([document], config)
+
+
+def count_extracted_entities(entities: dict) -> int:
+    """Count non-empty extracted entity values across schema keys."""
+    total = 0
+    for value in entities.values():
+        if isinstance(value, list):
+            total += sum(1 for item in value if str(item).strip())
+        elif value is not None and str(value).strip():
+            total += 1
+    return total
+
+
+@dataclass(frozen=True)
+class DualIndexResult:
+    """Outcome of dual indexing a session note into Chroma and Neo4j."""
+
+    chunks_indexed: int
+    entities_extracted: int
+    entities: dict
+    session_id: str
+    status: str = "ok"
+
+
+def ingest_session_note(
+    *,
+    entity_id: str,
+    session_number: int,
+    session_date: str,
+    note_text: str,
+    config: UseCaseConfig,
+    llm,
+    driver,
+    base_dir: Path = REPO_ROOT,
+    session_id: Optional[str] = None,
+) -> DualIndexResult:
+    """Chunk/embed into Chroma and extract/write entities into Neo4j."""
+    from core.graph import extract_entities, write_to_graph
+    from core.vectorstore import append_documents
+
+    resolved_session_id = session_id or f"{entity_id}-session-{session_number}"
+    chunks = chunk_session_note(
+        note_text,
+        config,
+        entity_id=entity_id,
+        session_number=session_number,
+        session_date=session_date,
+        session_id=resolved_session_id,
+    )
+    chunks_indexed = append_documents(chunks, config, base_dir=base_dir)
+
+    entities = extract_entities(note_text, config, llm)
+    write_to_graph(entities, entity_id, resolved_session_id, config, driver)
+
+    return DualIndexResult(
+        chunks_indexed=chunks_indexed,
+        entities_extracted=count_extracted_entities(entities),
+        entities=entities,
+        session_id=resolved_session_id,
+        status="ok",
+    )
+
+
 def main() -> None:
     """CLI: ``USE_CASE_CONFIG=configs/legal.yaml python -m core.ingestion``"""
     from dotenv import load_dotenv

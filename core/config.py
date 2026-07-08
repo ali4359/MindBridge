@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 RetrievalMode = Literal["bm25", "vector", "hybrid", "multi_query", "hybrid_rerank"]
 
@@ -112,6 +112,98 @@ class RetrievalConfig(BaseModel):
     multi_query_variants: int = 3
     enable_multi_query: bool = False
     enable_rerank: bool = True
+
+
+class GraphNodeConfig(BaseModel):
+    """Extractable graph node type declared in a use-case profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    extraction_key: str
+    identity: Literal["id", "name"] = "name"
+
+
+class GraphRelationshipConfig(BaseModel):
+    """Directed edge between two node labels from the active graph schema."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: str
+    from_: str = Field(alias="from")
+    to: str
+
+
+class GraphSchemaConfig(BaseModel):
+    """Domain knowledge-graph vocabulary — labels and edges come from YAML only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_node: str
+    session_node: str
+    entity_session_relationship: Optional[str] = None
+    nodes: list[GraphNodeConfig] = Field(default_factory=list)
+    relationships: list[GraphRelationshipConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_graph_schema(self) -> GraphSchemaConfig:
+        known_labels = {self.entity_node, self.session_node} | {
+            node.label for node in self.nodes
+        }
+
+        for rel in self.relationships:
+            if rel.from_ not in known_labels:
+                raise ValueError(
+                    f"graph_schema.relationships: unknown from label {rel.from_!r}"
+                )
+            if rel.to not in known_labels:
+                raise ValueError(
+                    f"graph_schema.relationships: unknown to label {rel.to!r}"
+                )
+
+        extraction_keys = [node.extraction_key for node in self.nodes]
+        if len(extraction_keys) != len(set(extraction_keys)):
+            raise ValueError("graph_schema.nodes: duplicate extraction_key values")
+
+        session_rels = [
+            rel
+            for rel in self.relationships
+            if rel.from_ == self.entity_node and rel.to == self.session_node
+        ]
+        if self.entity_session_relationship is None:
+            if len(session_rels) != 1:
+                raise ValueError(
+                    "graph_schema must define exactly one relationship from "
+                    f"{self.entity_node!r} to {self.session_node!r}, or set "
+                    "entity_session_relationship explicitly"
+                )
+            object.__setattr__(
+                self, "entity_session_relationship", session_rels[0].type
+            )
+        elif not any(
+            rel.type == self.entity_session_relationship for rel in session_rels
+        ):
+            raise ValueError(
+                "graph_schema.entity_session_relationship "
+                f"{self.entity_session_relationship!r} must match a relationship "
+                f"from {self.entity_node!r} to {self.session_node!r}"
+            )
+
+        return self
+
+    def known_labels(self) -> frozenset[str]:
+        """All node labels referenced by this schema."""
+        return frozenset(
+            {self.entity_node, self.session_node, *(node.label for node in self.nodes)}
+        )
+
+    def node_by_label(self) -> dict[str, GraphNodeConfig]:
+        """Map extractable node labels to their config entries."""
+        return {node.label: node for node in self.nodes}
+
+    def extraction_keys(self) -> dict[str, str]:
+        """Map extraction JSON keys to Neo4j node labels."""
+        return {node.extraction_key: node.label for node in self.nodes}
 
 
 class EntityConfig(BaseModel):
@@ -254,6 +346,7 @@ class UseCaseConfig(BaseModel):
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     entities: EntityConfig = Field(default_factory=EntityConfig)
+    graph_schema: Optional[GraphSchemaConfig] = None
     prompts: PromptsConfig = Field(default_factory=PromptsConfig)
     output_schema: OutputSchemaConfig = Field(default_factory=OutputSchemaConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)

@@ -159,6 +159,48 @@ entities:
     - doc_type
     - page_number
 
+graph_schema:
+  entity_node: Patient
+  session_node: Session
+  nodes:
+    - label: Diagnosis
+      extraction_key: diagnoses
+      identity: name
+    - label: Intervention
+      extraction_key: interventions
+      identity: name
+    - label: Symptom
+      extraction_key: symptoms
+      identity: name
+    - label: Medication
+      extraction_key: medications
+      identity: name
+    - label: Homework
+      extraction_key: homework
+      identity: name
+  relationships:
+    - type: HAS_DIAGNOSIS
+      from: Patient
+      to: Diagnosis
+    - type: HAD_SESSION
+      from: Patient
+      to: Session
+    - type: USED_INTERVENTION
+      from: Session
+      to: Intervention
+    - type: REPORTED_SYMPTOM
+      from: Session
+      to: Symptom
+    - type: PRESCRIBED
+      from: Session
+      to: Medication
+    - type: ASSIGNED_HOMEWORK
+      from: Session
+      to: Homework
+    - type: RESPONDED_TO
+      from: Patient
+      to: Intervention
+
 prompts:
   system: |
     You are MindBridge, a clinical knowledge assistant for licensed mental health professionals.
