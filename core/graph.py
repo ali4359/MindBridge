@@ -384,3 +384,111 @@ def read_entity_graph(
             )
 
     return graph
+
+
+def _node_by_extraction_hint(
+    schema: GraphSchemaConfig,
+    *,
+    hints: tuple[str, ...],
+) -> Optional[GraphNodeConfig]:
+    for node in schema.nodes:
+        key = node.extraction_key.lower()
+        if any(hint in key for hint in hints):
+            return node
+    return None
+
+
+def find_similar_entities(
+    entity_id: str,
+    config: UseCaseConfig,
+    driver: Driver,
+    *,
+    limit: int = 5,
+) -> list[str]:
+    """Find entities with overlapping diagnosis + intervention patterns."""
+    if config.graph_schema is None:
+        raise ValueError(
+            f"Profile {config.name!r} has no graph_schema; cannot find similar entities"
+        )
+
+    schema = config.graph_schema
+    _validate_schema_identifiers(schema)
+    entity_session_type = schema.entity_session_relationship
+    if entity_session_type is None:
+        raise ValueError("graph_schema.entity_session_relationship is not resolved")
+
+    diagnosis_node = _node_by_extraction_hint(
+        schema,
+        hints=("diagnos", "issue", "statute"),
+    )
+    intervention_node = _node_by_extraction_hint(
+        schema,
+        hints=("intervention", "argument", "precedent"),
+    )
+    if diagnosis_node is None or intervention_node is None:
+        return []
+
+    diagnosis_rel_types = _relationship_types_to(
+        schema,
+        from_label=schema.session_node,
+        to_label=diagnosis_node.label,
+    ) + _relationship_types_to(
+        schema,
+        from_label=schema.entity_node,
+        to_label=diagnosis_node.label,
+    )
+    intervention_rel_types = _relationship_types_to(
+        schema,
+        from_label=schema.session_node,
+        to_label=intervention_node.label,
+    ) + _relationship_types_to(
+        schema,
+        from_label=schema.entity_node,
+        to_label=intervention_node.label,
+    )
+    if not diagnosis_rel_types or not intervention_rel_types:
+        return []
+
+    diagnosis_rel_types = list(dict.fromkeys(diagnosis_rel_types))
+    intervention_rel_types = list(dict.fromkeys(intervention_rel_types))
+
+    diagnosis_prop = _node_display_property(diagnosis_node)
+    intervention_prop = _node_display_property(intervention_node)
+
+    with driver.session() as session:
+        result = session.run(
+            f"""
+            MATCH (e:{schema.entity_node} {{id: $entity_id}})
+                  -[:{entity_session_type}]->(s:{schema.session_node})-[rd]->(d:{diagnosis_node.label})
+            WHERE type(rd) IN $diagnosis_rel_types
+            WITH e, collect(DISTINCT d.{diagnosis_prop}) AS diagnosis_values
+            MATCH (e)-[:{entity_session_type}]->(s2:{schema.session_node})-[ri]->(i:{intervention_node.label})
+            WHERE type(ri) IN $intervention_rel_types
+            WITH diagnosis_values, collect(DISTINCT i.{intervention_prop}) AS intervention_values
+            MATCH (other:{schema.entity_node})-[:{entity_session_type}]->(os:{schema.session_node})
+            WHERE other.id <> $entity_id
+            OPTIONAL MATCH (os)-[ord]->(od:{diagnosis_node.label})
+            WHERE type(ord) IN $diagnosis_rel_types
+            WITH other, intervention_values, diagnosis_values, collect(DISTINCT od.{diagnosis_prop}) AS other_diagnoses, os
+            OPTIONAL MATCH (os)-[ori]->(oi:{intervention_node.label})
+            WHERE type(ori) IN $intervention_rel_types
+            WITH other, diagnosis_values, intervention_values, other_diagnoses, collect(DISTINCT oi.{intervention_prop}) AS other_interventions
+            WITH other,
+                 [x IN diagnosis_values WHERE x IS NOT NULL AND x IN other_diagnoses] AS diagnosis_overlap,
+                 [x IN intervention_values WHERE x IS NOT NULL AND x IN other_interventions] AS intervention_overlap
+            WHERE size(diagnosis_overlap) > 0 AND size(intervention_overlap) > 0
+            RETURN other.id AS entity_id,
+                   size(diagnosis_overlap) + size(intervention_overlap) AS score
+            ORDER BY score DESC, entity_id ASC
+            LIMIT $limit
+            """,
+            entity_id=entity_id,
+            diagnosis_rel_types=diagnosis_rel_types,
+            intervention_rel_types=intervention_rel_types,
+            limit=limit,
+        )
+        return [
+            str(record["entity_id"])
+            for record in result
+            if record.get("entity_id") is not None
+        ]

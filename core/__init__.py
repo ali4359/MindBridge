@@ -35,6 +35,7 @@ from core.chain import (
 )
 from core.output_parser import build_output_schema
 from core.safety import apply_safety, build_safety_chain, match_flag_patterns
+from core.output_chain import build_output_chain
 
 from core.graph import (
     build_extraction_chain,
@@ -75,6 +76,7 @@ __all__ = [
     "build_extraction_prompt",
     "build_extraction_schema",
     "build_llm",
+    "build_output_chain",
     "build_output_schema",
     "build_prompt",
     "build_retriever",

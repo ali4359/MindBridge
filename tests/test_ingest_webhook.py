@@ -109,6 +109,7 @@ def test_ingest_session_note_dual_writes(mental_health_config, tmp_path) -> None
 
 def test_post_ingest_endpoint(monkeypatch) -> None:
     monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
 
     fake_result = DualIndexResult(
         chunks_indexed=3,
@@ -119,7 +120,6 @@ def test_post_ingest_endpoint(monkeypatch) -> None:
     )
 
     with (
-        patch("backend.routes.ingest.build_llm", return_value=MagicMock()),
         patch("backend.routes.ingest.get_graph_driver") as driver_factory,
         patch(
             "backend.routes.ingest.ingest_session_note",
@@ -129,9 +129,11 @@ def test_post_ingest_endpoint(monkeypatch) -> None:
         driver = MagicMock()
         driver_factory.return_value = driver
 
-        from app.main import app
+        from backend.main import create_app
 
-        with TestClient(app) as client:
+        with TestClient(create_app()) as client:
+            # Inject LLM so ingest does not require GROQ in light startup.
+            client.app.state.llm = MagicMock()
             response = client.post(
                 "/ingest",
                 json={
@@ -155,10 +157,11 @@ def test_post_ingest_endpoint(monkeypatch) -> None:
 
 def test_post_ingest_validation_error(monkeypatch) -> None:
     monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
 
-    from app.main import app
+    from backend.main import create_app
 
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         response = client.post(
             "/ingest",
             json={
@@ -169,3 +172,41 @@ def test_post_ingest_validation_error(monkeypatch) -> None:
         )
 
     assert response.status_code == 422
+
+
+def test_post_ingest_accepts_date_alias(monkeypatch) -> None:
+    monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
+
+    fake_result = DualIndexResult(
+        chunks_indexed=1,
+        entities_extracted=2,
+        entities={"diagnoses": ["GAD"]},
+        session_id="patient-9-session-1",
+        status="ok",
+    )
+
+    with (
+        patch("backend.routes.ingest.get_graph_driver", return_value=MagicMock()),
+        patch(
+            "backend.routes.ingest.ingest_session_note",
+            return_value=fake_result,
+        ) as ingest_mock,
+    ):
+        from backend.main import create_app
+
+        with TestClient(create_app()) as client:
+            client.app.state.llm = MagicMock()
+            response = client.post(
+                "/ingest",
+                json={
+                    "entity_id": "patient-9",
+                    "date": "2026-07-08",
+                    "note_text": SYNTHETIC_NOTE,
+                },
+            )
+
+    assert response.status_code == 200
+    kwargs = ingest_mock.call_args.kwargs
+    assert kwargs["session_date"] == "2026-07-08"
+    assert kwargs["session_number"] == 1

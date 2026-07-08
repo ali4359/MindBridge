@@ -1,1 +1,1 @@
-"""HTTP API package for MindBridge webhook and route handlers."""
+"""HTTP API package for MindBridge platform endpoints."""
