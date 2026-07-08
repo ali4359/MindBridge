@@ -12,7 +12,7 @@ class QueryRequest(BaseModel):
 
     question: str = Field(..., min_length=1)
     entity_id: Optional[str] = None
-    filter: Optional[dict[str, Any]] = None
+    doc_type_filter: Optional[str] = None
 
 
 class Citation(BaseModel):
@@ -28,7 +28,8 @@ class QueryResponse(BaseModel):
 
     answer: str
     citations: list[Citation]
-    safe: bool
+    safety_status: str
+    session_id: str
 
 
 class GenerateOutputRequest(BaseModel):

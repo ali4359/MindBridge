@@ -86,7 +86,8 @@ def test_query_endpoint_applies_safety(light_client) -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["safe"] is True
+    assert body["safety_status"] == "safe"
+    assert body["session_id"]
     assert "SSRIs" in body["answer"]
     assert body["citations"][0]["source"] == "nice-ng222-depression.pdf"
 
@@ -142,7 +143,12 @@ def test_query_stream_emits_sse_tokens(light_client) -> None:
             },
         )
     ]
-    fake_llm = FakeListChatModel(responses=["TIPP: Temperature, Intense exercise."])
+    fake_llm = FakeListChatModel(
+        responses=[
+            "TIPP: Temperature, Intense exercise.",
+            json.dumps({"safe": True, "violated_rules": [], "explanation": "ok"}),
+        ]
+    )
     light_client.app.state.llm = fake_llm
     light_client.app.state.retriever = _StaticRetriever(documents=docs)
 
@@ -156,6 +162,8 @@ def test_query_stream_emits_sse_tokens(light_client) -> None:
 
     assert "data:" in body
     assert "TIPP" in body or "done" in body
+    assert "session_id" in body
+    assert "safety_status" in body
 
 
 def test_initialize_platform_stores_state(monkeypatch) -> None:
