@@ -50,32 +50,28 @@ class EntityProfileResponse(BaseModel):
 class UseCaseSummary(BaseModel):
     """Active profile summary for operator tooling."""
 
-    name: str
-    display_name: str
-    description: str
+    use_case_name: str
+    domain: str
     entity_name: str
-    collection: str
-    retrieval_mode: str
+    output_schema_fields: list[str]
+    data_sources_loaded: list[dict[str, str]]
     chunk_count: int
-    output_schema: str
-    output_fields: list[str]
-    graph_enabled: bool
-    sample_queries: list[str]
+    graph_node_count: int
 
 
 class HealthResponse(BaseModel):
     """Liveness probe for the loaded platform process."""
 
     status: str
-    profile: str
-    display_name: str
-    chunk_count: int
+    model_name: str
+    vector_store_chunk_count: int
+    neo4j_status: str
+    uptime_seconds: float
 
 
 class MetricsResponse(BaseModel):
-    """Evaluation targets (and optional cached RAGAS scores)."""
+    """RAGAS metrics read from CSV when available."""
 
-    profile: str
-    ragas_target_scores: dict[str, float]
-    ragas_scores: Optional[dict[str, float]] = None
-    chunk_count: int
+    status: str
+    source: str
+    scores: Optional[dict[str, float]] = None

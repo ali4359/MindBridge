@@ -42,22 +42,44 @@ def test_health_and_use_case(light_client) -> None:
     assert health.status_code == 200
     body = health.json()
     assert body["status"] == "ok"
-    assert body["profile"] == "mental_health"
+    assert body["model_name"] == "llama-3.3-70b-versatile"
+    assert body["vector_store_chunk_count"] == 0
+    assert body["neo4j_status"] == "disconnected"
+    assert body["uptime_seconds"] >= 0
 
     summary = light_client.get("/use-case")
     assert summary.status_code == 200
     payload = summary.json()
-    assert payload["display_name"] == "MindBridge Clinical Copilot"
+    assert payload["use_case_name"] == "MindBridge Clinical Copilot"
+    assert payload["domain"] == "mental_health"
     assert payload["entity_name"] == "patient"
-    assert "subjective" in payload["output_fields"]
+    assert "subjective" in payload["output_schema_fields"]
+    assert payload["chunk_count"] == 0
+    assert payload["graph_node_count"] > 0
+    assert payload["data_sources_loaded"]
 
 
-def test_metrics_returns_ragas_targets(light_client) -> None:
+def test_metrics_returns_missing_when_no_csv(light_client) -> None:
     response = light_client.get("/metrics")
     assert response.status_code == 200
     body = response.json()
-    assert body["ragas_target_scores"]["faithfulness"] == 0.80
-    assert body["ragas_scores"] is None
+    assert body["status"] in {"missing", "empty", "invalid", "ok"}
+    assert body["source"].endswith("ragas_results.csv")
+
+
+def test_metrics_reads_ragas_csv(light_client, tmp_path) -> None:
+    csv_path = tmp_path / "ragas_results.csv"
+    csv_path.write_text(
+        "timestamp,faithfulness,answer_relevancy,context_precision,context_recall\n"
+        "2026-07-08T15:00:00Z,0.81,0.77,0.72,0.70\n",
+        encoding="utf-8",
+    )
+    with patch("backend.routes.platform.RAGAS_RESULTS_CSV", csv_path):
+        response = light_client.get("/metrics")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["scores"]["faithfulness"] == 0.81
 
 
 def test_query_endpoint_applies_safety(light_client) -> None:

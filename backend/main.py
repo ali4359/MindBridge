@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
@@ -62,6 +63,7 @@ def _light_startup(app: FastAPI) -> None:
     app.state.chain = None
     app.state.graph_driver = None
     app.state.ragas_scores = None
+    app.state.started_at = time.time()
     logger.info(
         "MindBridge platform loaded — light startup [%s → %s]",
         config_path,
@@ -96,6 +98,7 @@ def initialize_platform(app: FastAPI) -> int:
     app.state.chain = chain
     app.state.graph_driver = graph_driver
     app.state.ragas_scores = None
+    app.state.started_at = time.time()
 
     logger.info(
         "MindBridge platform loaded — %d chunks indexed. [%s → %s]",
