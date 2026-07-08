@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel
@@ -18,21 +17,21 @@ def build_output_chain(
     config: UseCaseConfig,
     llm: BaseChatModel,
 ) -> Runnable[dict[str, str], dict[str, Any]]:
-    """Build an LCEL chain that fills the dynamic output schema from notes text.
+    """Build an LCEL chain using ``with_structured_output(schema_model)``.
 
     Input keys: ``notes_text``, ``entity_id``, optional ``entity_context``.
-    Output: JSON dict keyed by ``config.output_schema.fields``.
+    Output: object/dict keyed by ``config.output_schema.fields``.
     """
     schema_model = build_output_schema(config)
-    parser = JsonOutputParser(pydantic_object=schema_model)
     field_names = ", ".join(config.output_schema.fields)
+    structured_llm = llm.with_structured_output(schema_model)
 
     system = (
         f"You generate structured {schema_model.__name__} JSON for "
         f"{config.display_name}.\n"
         f"Populate these fields: {field_names}.\n"
         "Use only information supported by the notes. "
-        "Return JSON only.\n\n{format_instructions}"
+        "Return only the structured output."
     )
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -44,7 +43,7 @@ def build_output_chain(
                 "Notes:\n{notes_text}",
             ),
         ]
-    ).partial(format_instructions=parser.get_format_instructions())
+    )
 
     chain: Runnable[dict[str, str], dict[str, Any]] = (
         {
@@ -56,8 +55,7 @@ def build_output_chain(
             ),
         }
         | prompt
-        | llm
-        | parser
+        | structured_llm
     )
     return chain
 

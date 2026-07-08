@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.runnables import RunnableLambda
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,13 +94,16 @@ def test_query_endpoint_applies_safety(light_client) -> None:
 
 
 def test_generate_output_returns_schema_fields(light_client) -> None:
-    payload = {
+    structured_payload = {
         "subjective": "Client reports worry.",
         "objective": "Affect anxious.",
         "assessment": "GAD.",
         "plan": "Continue CBT.",
     }
-    fake_llm = FakeListChatModel(responses=[json.dumps(payload)])
+    fake_llm = MagicMock()
+    fake_llm.with_structured_output.return_value = RunnableLambda(
+        lambda _: structured_payload
+    )
     light_client.app.state.llm = fake_llm
     light_client.app.state.graph_driver = None
 
@@ -119,6 +123,44 @@ def test_generate_output_returns_schema_fields(light_client) -> None:
     body = response.json()
     assert body["subjective"] == "Client reports worry."
     assert set(body) == {"subjective", "objective", "assessment", "plan"}
+
+
+def test_generate_output_legal_profile_returns_legal_brief(monkeypatch) -> None:
+    monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "legal.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
+
+    structured_payload = {
+        "issue": "Whether breach is proven.",
+        "rule": "Plaintiff must prove contract, breach, and damages.",
+        "analysis": "The evidence supports each element under cited authorities.",
+        "conclusion": "Breach claim is likely viable.",
+    }
+    fake_llm = MagicMock()
+    fake_llm.with_structured_output.return_value = RunnableLambda(
+        lambda _: structured_payload
+    )
+
+    from backend.main import create_app
+
+    with TestClient(create_app()) as client:
+        client.app.state.llm = fake_llm
+        client.app.state.graph_driver = None
+        with patch(
+            "backend.routes.output.load_entity_context",
+            return_value="(No client profile provided.)",
+        ):
+            response = client.post(
+                "/generate-output",
+                json={
+                    "entity_id": "client-1",
+                    "notes_text": "Matter intake and legal analysis notes.",
+                },
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"issue", "rule", "analysis", "conclusion"}
+    assert body["conclusion"] == "Breach claim is likely viable."
 
 
 def test_entity_graph_requires_schema(light_client) -> None:
