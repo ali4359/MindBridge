@@ -311,6 +311,8 @@ class EvaluationConfig(BaseModel):
     retrieval_precision_threshold: int = 8
     retrieval_case_count: int = 10
     retrieval_top_n_check: int = 3
+    sample_pause_seconds: float = 0.0
+    ragas_batch_size: Optional[int] = None
     retrieval_baseline_cases: list[RetrievalBaselineCase] = Field(default_factory=list)
     keyword_test_queries: list[str] = Field(default_factory=list)
     hybrid_test_query: str = "DBT distress tolerance skills"

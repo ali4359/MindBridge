@@ -41,6 +41,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Suppress RAGAS progress output",
     )
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=None,
+        help="Evaluate only the first N golden-set cases (reduces API load)",
+    )
+    parser.add_argument(
+        "--metrics",
+        nargs="+",
+        default=None,
+        help=(
+            "Override configured RAGAS metrics for this run "
+            "(e.g. faithfulness answer_relevancy)"
+        ),
+    )
     return parser
 
 
@@ -49,6 +64,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     args = build_parser().parse_args(argv)
+    if args.max_cases is not None and args.max_cases <= 0:
+        logger.error("--max-cases must be a positive integer")
+        return 1
+
     config_path = Path(args.config)
     if not config_path.is_file():
         logger.error("Config file not found: %s", config_path)
@@ -67,8 +86,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     print(f"\n=== RAGAS evaluation: {config.display_name} ===")
     print(f"Config: {config_path.resolve()}")
-    print(f"Cases: {len(cases)}")
-    print(f"Metrics: {', '.join(config.evaluation.metrics)}\n")
+    selected_cases = min(len(cases), args.max_cases) if args.max_cases else len(cases)
+    selected_metrics = args.metrics or config.evaluation.metrics
+    print(f"Cases: {selected_cases} (of {len(cases)})")
+    print(f"Metrics: {', '.join(selected_metrics)}\n")
 
     try:
         result = run_evaluation(
@@ -76,12 +97,18 @@ def main(argv: Optional[list[str]] = None) -> int:
             chain,
             retriever=retriever,
             show_progress=not args.quiet,
+            max_cases=args.max_cases,
+            metric_names_override=args.metrics,
         )
     except Exception as exc:  # noqa: BLE001 — surface eval failures to the CLI user
         logger.error("RAGAS evaluation failed: %s", exc)
         return 1
 
-    targets = config.evaluation.target_scores
+    targets = {
+        metric_name: threshold
+        for metric_name, threshold in config.evaluation.target_scores.items()
+        if metric_name in selected_metrics
+    }
     print(format_score_table(result.scores, targets, result.pass_fail))
     print(f"\nResults saved to: {result.csv_path.resolve()}")
 

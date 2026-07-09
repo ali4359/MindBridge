@@ -274,6 +274,8 @@ safety:
 
 evaluation:
   golden_set: evaluation/golden/mental_health.jsonl
+  sample_pause_seconds: 0.4
+  ragas_batch_size: 1
   metrics:
     - faithfulness
     - answer_relevancy

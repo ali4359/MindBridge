@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableLambda
 from core.config import load_config
 from core.evaluation import (
     aggregate_scores,
+    build_judge_llm,
     build_ragas_samples,
     compare_to_targets,
     format_score_table,
@@ -66,6 +67,15 @@ def test_resolve_metrics_defaults() -> None:
 def test_resolve_metrics_rejects_unknown() -> None:
     with pytest.raises(ValueError, match="Unknown RAGAS metrics"):
         resolve_metrics(["faithfulness", "not_a_metric"])
+
+
+def test_build_judge_llm_bypasses_n_for_groq() -> None:
+    config = load_config("configs/mental_health.yaml")
+    with patch("core.evaluation.build_llm") as build_llm_mock:
+        build_llm_mock.return_value = MagicMock()
+        judge = build_judge_llm(config)
+
+    assert judge.bypass_n is True
 
 
 def test_build_ragas_samples_invokes_chain_and_retriever() -> None:
