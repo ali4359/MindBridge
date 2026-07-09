@@ -51,14 +51,18 @@ from core.graph import (
 
 from core.validation import ConfigValidationError, validate_config
 from core.evaluation import (
+    EvaluationRunResult,
     aggregate_scores,
     build_judge_llm,
     build_ragas_samples,
     compare_to_targets,
+    format_score_table,
+    format_target_warnings,
     load_eval_dataset,
     ragas_results_path,
     resolve_metrics,
     run_evaluation,
+    score_gaps,
     write_results_csv,
 )
 
@@ -70,6 +74,7 @@ __all__ = [
     "DownloadSourceConfig",
     "EntityConfig",
     "EvaluationConfig",
+    "EvaluationRunResult",
     "GraphNodeConfig",
     "GraphRelationshipConfig",
     "GraphSchemaConfig",
@@ -100,6 +105,8 @@ __all__ = [
     "extract_entities",
     "format_entity_graph",
     "format_retrieved_context",
+    "format_score_table",
+    "format_target_warnings",
     "get_embeddings",
     "get_graph_driver",
     "load_active_config",
@@ -113,6 +120,7 @@ __all__ = [
     "resolve_metrics",
     "response_appears_cited",
     "run_evaluation",
+    "score_gaps",
     "validate_config",
     "write_entity_to_graph",
     "write_results_csv",

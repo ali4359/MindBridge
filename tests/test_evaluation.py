@@ -16,10 +16,13 @@ from core.evaluation import (
     aggregate_scores,
     build_ragas_samples,
     compare_to_targets,
+    format_score_table,
+    format_target_warnings,
     load_eval_dataset,
     ragas_results_path,
     resolve_metrics,
     run_evaluation,
+    score_gaps,
     write_results_csv,
 )
 
@@ -171,19 +174,83 @@ def test_run_evaluation_writes_csv_and_returns_pass_fail(tmp_path: Path) -> None
     ):
         judge_mock.return_value = MagicMock()
         emb_mock.return_value = MagicMock()
-        pass_fail = run_evaluation(
+        result = run_evaluation(
             config,
             chain,
             retriever=retriever,
             base_dir=tmp_path,
         )
 
-    assert pass_fail["faithfulness"] is True
-    assert pass_fail["answer_relevancy"] is True
-    assert pass_fail["context_precision"] is True
-    assert pass_fail["context_recall"] is True
+    assert result.pass_fail["faithfulness"] is True
+    assert result.pass_fail["answer_relevancy"] is True
+    assert result.pass_fail["context_precision"] is True
+    assert result.pass_fail["context_recall"] is True
+    assert result.csv_path == output_path
     assert output_path.is_file()
     assert "faithfulness" in output_path.read_text(encoding="utf-8")
+
+
+def test_format_score_table_and_warnings() -> None:
+    scores = {"faithfulness": 0.81, "answer_relevancy": 0.72}
+    targets = {"faithfulness": 0.80, "answer_relevancy": 0.75}
+    pass_fail = compare_to_targets(scores, targets)
+
+    table = format_score_table(scores, targets, pass_fail)
+    assert "faithfulness" in table
+    assert "PASS" in table
+    assert "FAIL" in table
+
+    warnings = format_target_warnings(scores, targets, pass_fail)
+    assert "WARNING: Scores below target" in warnings
+    assert "answer_relevancy" in warnings
+    assert "gap 0.0300" in warnings
+
+    gaps = score_gaps(scores, targets, pass_fail)
+    assert gaps == {"answer_relevancy": pytest.approx(0.03)}
+
+
+def test_run_eval_cli_exits_nonzero_on_target_miss(tmp_path: Path) -> None:
+    config = load_config("configs/mental_health.yaml")
+    cases = load_eval_dataset(config)[:1]
+
+    mock_result = MagicMock()
+    mock_result._scores_dict = {
+        "faithfulness": [0.70],
+        "answer_relevancy": [0.80],
+        "context_precision": [0.75],
+        "context_recall": [0.74],
+    }
+    mock_result.__getitem__ = lambda _self, key: mock_result._scores_dict[key]
+
+    with (
+        patch("run_eval.load_config", return_value=config),
+        patch("run_eval.load_eval_dataset", return_value=cases),
+        patch("run_eval.load_vectorstore", return_value=MagicMock()),
+        patch("run_eval.build_llm", return_value=FakeListChatModel(responses=["answer"])),
+        patch("run_eval.build_retriever", return_value=MagicMock()),
+        patch("run_eval.build_chain", return_value=RunnableLambda(lambda q: "answer")),
+        patch("run_eval.run_evaluation") as run_mock,
+    ):
+        from run_eval import main
+
+        run_mock.return_value = MagicMock(
+            scores={
+                "faithfulness": 0.70,
+                "answer_relevancy": 0.80,
+                "context_precision": 0.75,
+                "context_recall": 0.74,
+            },
+            pass_fail={
+                "faithfulness": False,
+                "answer_relevancy": True,
+                "context_precision": True,
+                "context_recall": True,
+            },
+            csv_path=tmp_path / "mental_health_ragas_results.csv",
+        )
+        exit_code = main(["--config", "configs/mental_health.yaml", "--quiet"])
+
+    assert exit_code == 1
 
 
 def test_evaluation_config_exposes_target_scores_alias() -> None:

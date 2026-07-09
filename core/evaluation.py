@@ -6,6 +6,7 @@ import csv
 import importlib
 import logging
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -37,6 +38,15 @@ METRIC_BY_NAME: dict[str, Any] = {
     "context_precision": context_precision,
     "context_recall": context_recall,
 }
+
+
+@dataclass(frozen=True)
+class EvaluationRunResult:
+    """Scores, pass/fail, and output path from a RAGAS evaluation run."""
+
+    scores: dict[str, float]
+    pass_fail: dict[str, bool]
+    csv_path: Path
 
 
 def load_eval_dataset(config: UseCaseConfig) -> list[dict[str, Any]]:
@@ -125,6 +135,71 @@ def compare_to_targets(
     return results
 
 
+def score_gaps(
+    scores: dict[str, float],
+    targets: dict[str, float],
+    pass_fail: dict[str, bool],
+) -> dict[str, float]:
+    """Return how far each failing metric is below its target (positive = gap)."""
+    gaps: dict[str, float] = {}
+    for metric_name, passed in pass_fail.items():
+        if passed:
+            continue
+        target = targets[metric_name]
+        actual = scores.get(metric_name)
+        if actual is None or math.isnan(actual):
+            gaps[metric_name] = target
+            continue
+        gaps[metric_name] = max(0.0, target - actual)
+    return gaps
+
+
+def format_score_table(
+    scores: dict[str, float],
+    targets: dict[str, float],
+    pass_fail: dict[str, bool],
+) -> str:
+    """Render a fixed-width score table for CLI output."""
+    metric_names = sorted(set(scores) | set(targets))
+    header = f"{'Metric':<22} {'Score':>8} {'Target':>8}  {'Status':<6}"
+    divider = "-" * len(header)
+    lines = [header, divider]
+
+    for name in metric_names:
+        score = scores.get(name, float("nan"))
+        target = targets.get(name)
+        status = "PASS" if pass_fail.get(name) else "FAIL"
+        score_text = f"{score:.4f}" if not math.isnan(score) else "n/a"
+        target_text = f"{target:.2f}" if target is not None else "n/a"
+        lines.append(f"{name:<22} {score_text:>8} {target_text:>8}  {status:<6}")
+
+    return "\n".join(lines)
+
+
+def format_target_warnings(
+    scores: dict[str, float],
+    targets: dict[str, float],
+    pass_fail: dict[str, bool],
+) -> str:
+    """Format warnings for metrics that missed configured targets."""
+    gaps = score_gaps(scores, targets, pass_fail)
+    if not gaps:
+        return ""
+
+    lines = ["WARNING: Scores below target:"]
+    for metric_name, gap in sorted(gaps.items()):
+        target = targets[metric_name]
+        actual = scores.get(metric_name, float("nan"))
+        if actual is None or math.isnan(actual):
+            lines.append(f"  - {metric_name}: n/a (target {target:.2f})")
+        else:
+            lines.append(
+                f"  - {metric_name}: {actual:.4f} "
+                f"(target {target:.2f}, gap {gap:.4f})"
+            )
+    return "\n".join(lines)
+
+
 def write_results_csv(
     path: Path,
     scores: dict[str, float],
@@ -189,8 +264,9 @@ def run_evaluation(
     *,
     retriever: Optional[BaseRetriever] = None,
     base_dir: Path = REPO_ROOT,
-) -> dict[str, bool]:
-    """Run RAGAS for the active use case and return pass/fail per metric.
+    show_progress: bool = False,
+) -> EvaluationRunResult:
+    """Run RAGAS for the active use case and return scores with pass/fail.
 
     Reads golden Q&A from ``evaluation/{name}_eval.py``, configures RAGAS with
     ``LangchainLLMWrapper(ChatGroq(...))`` as the LLM judge, compares scores to
@@ -223,7 +299,7 @@ def run_evaluation(
         metrics=metrics,
         llm=judge,
         embeddings=embeddings,
-        show_progress=False,
+        show_progress=show_progress,
         raise_exceptions=False,
     )
 
@@ -236,4 +312,4 @@ def run_evaluation(
 
     logger.info("RAGAS scores for %s: %s", config.name, scores)
     logger.info("RAGAS pass/fail for %s: %s", config.name, pass_fail)
-    return pass_fail
+    return EvaluationRunResult(scores=scores, pass_fail=pass_fail, csv_path=output_path)
