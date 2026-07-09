@@ -15,7 +15,11 @@ from core.ingestion import (
     DualIndexResult,
     chunk_session_note,
     count_extracted_entities,
+    ingest_all_session_notes,
     ingest_session_note,
+    load_session_note_files,
+    parse_session_note_number,
+    strip_note_headers,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +36,60 @@ Plan: Used thought record. Continued sertraline 50mg. Assigned daily thought log
 @pytest.fixture
 def mental_health_config():
     return load_config("configs/mental_health.yaml")
+
+
+def test_strip_note_headers_removes_comment_lines() -> None:
+    raw = "# header\n# another\n\nSOAP body here."
+    assert strip_note_headers(raw) == "SOAP body here."
+
+
+def test_parse_session_note_number_from_filename() -> None:
+    assert parse_session_note_number(Path("synthetic_session_10_session-10.txt")) == 10
+    assert parse_session_note_number(Path("synthetic_session_02_session-2.txt")) == 2
+
+
+def test_load_session_note_files_from_demo_dir(mental_health_config) -> None:
+    notes = load_session_note_files(mental_health_config, base_dir=REPO_ROOT)
+    assert len(notes) == 20
+    assert notes[0][0] == 1
+    assert notes[-1][0] == 20
+    assert "Subjective" in notes[9][2]  # session 10 — DBT/TIPP note
+
+
+def test_ingest_all_session_notes_vector_only(mental_health_config, tmp_path) -> None:
+    notes_dir = tmp_path / "data" / "session_notes"
+    notes_dir.mkdir(parents=True)
+    (notes_dir / "synthetic_session_01_first-session.txt").write_text(
+        "# comment\n\nClient reports worry.\nPlan: breathing homework.\n",
+        encoding="utf-8",
+    )
+
+    config = mental_health_config.model_copy(
+        update={
+            "data": mental_health_config.data.model_copy(
+                update={
+                    "chroma_path": "data/chromadb-test",
+                    "session_notes": mental_health_config.data.session_notes.model_copy(
+                        update={"output_dir": "data/session_notes"}
+                    ),
+                }
+            ),
+        }
+    )
+
+    with patch("core.vectorstore.append_documents", return_value=1) as append_mock:
+        result = ingest_all_session_notes(
+            config,
+            entity_id="patient-demo",
+            base_dir=tmp_path,
+            vector_only=True,
+        )
+
+    assert result.files_processed == 1
+    assert result.chunks_indexed == 1
+    assert result.graph_mode == "off"
+    assert result.session_ids == ["patient-demo-session-1"]
+    append_mock.assert_called_once()
 
 
 def test_chunk_session_note_attaches_metadata(mental_health_config) -> None:
