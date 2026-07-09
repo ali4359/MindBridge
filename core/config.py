@@ -299,6 +299,14 @@ class EvaluationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     golden_set: Optional[str] = None
+    metrics: list[str] = Field(
+        default_factory=lambda: [
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+        ]
+    )
     ragas_target_scores: dict[str, float] = Field(default_factory=dict)
     retrieval_precision_threshold: int = 8
     retrieval_case_count: int = 10
@@ -320,6 +328,11 @@ class EvaluationConfig(BaseModel):
             ),
         ]
     )
+
+    @property
+    def target_scores(self) -> dict[str, float]:
+        """Alias for ``ragas_target_scores`` used by the RAGAS runner."""
+        return self.ragas_target_scores
 
 
 class LlmConfig(BaseModel):

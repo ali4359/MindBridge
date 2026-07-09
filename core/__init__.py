@@ -50,6 +50,17 @@ from core.graph import (
 )
 
 from core.validation import ConfigValidationError, validate_config
+from core.evaluation import (
+    aggregate_scores,
+    build_judge_llm,
+    build_ragas_samples,
+    compare_to_targets,
+    load_eval_dataset,
+    ragas_results_path,
+    resolve_metrics,
+    run_evaluation,
+    write_results_csv,
+)
 
 __all__ = [
     "ConfigValidationError",
@@ -70,17 +81,21 @@ __all__ = [
     "SafetyConfig",
     "SessionNotesConfig",
     "UseCaseConfig",
+    "aggregate_scores",
     "apply_safety",
     "build_chain",
     "build_extraction_chain",
     "build_extraction_prompt",
     "build_extraction_schema",
+    "build_judge_llm",
     "build_llm",
     "build_output_chain",
     "build_output_schema",
     "build_prompt",
+    "build_ragas_samples",
     "build_retriever",
     "build_safety_chain",
+    "compare_to_targets",
     "empty_extraction_payload",
     "extract_entities",
     "format_entity_graph",
@@ -90,11 +105,16 @@ __all__ = [
     "load_active_config",
     "load_config",
     "load_entity_context",
+    "load_eval_dataset",
     "match_flag_patterns",
+    "ragas_results_path",
     "read_entity_graph",
     "resolve_config_path",
+    "resolve_metrics",
     "response_appears_cited",
+    "run_evaluation",
     "validate_config",
     "write_entity_to_graph",
+    "write_results_csv",
     "write_to_graph",
 ]
