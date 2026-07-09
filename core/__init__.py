@@ -50,6 +50,7 @@ from core.graph import (
 )
 
 from core.validation import ConfigValidationError, validate_config
+from core.tracing import configure_langsmith_project, langsmith_project_name
 from core.evaluation import (
     EvaluationRunResult,
     aggregate_scores,
@@ -101,6 +102,7 @@ __all__ = [
     "build_retriever",
     "build_safety_chain",
     "compare_to_targets",
+    "configure_langsmith_project",
     "empty_extraction_payload",
     "extract_entities",
     "format_entity_graph",
@@ -109,6 +111,7 @@ __all__ = [
     "format_target_warnings",
     "get_embeddings",
     "get_graph_driver",
+    "langsmith_project_name",
     "load_active_config",
     "load_config",
     "load_entity_context",

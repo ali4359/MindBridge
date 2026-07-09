@@ -384,6 +384,19 @@ class UseCaseConfig(BaseModel):
             return None
         return self.resolve_path(self.evaluation.golden_set, base=base)
 
+    @property
+    def langsmith_project(self) -> str:
+        """LangSmith project name for isolated trace dashboards per profile."""
+        return f"{self.name}-traces"
+
+
+def _finalize_config(config: UseCaseConfig) -> UseCaseConfig:
+    """Apply runtime side effects after a profile is validated."""
+    from core.tracing import configure_langsmith_project
+
+    configure_langsmith_project(config)
+    return config
+
 
 def load_config(path: str) -> UseCaseConfig:
     """Read a YAML use-case profile and return a validated ``UseCaseConfig``."""
@@ -401,7 +414,7 @@ def load_config(path: str) -> UseCaseConfig:
             f"Config root must be a mapping, got {type(raw).__name__}: {config_path}"
         )
 
-    return UseCaseConfig.model_validate(raw)
+    return _finalize_config(UseCaseConfig.model_validate(raw))
 
 
 DEFAULT_USE_CASE_CONFIG = "configs/mental_health.yaml"

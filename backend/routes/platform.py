@@ -57,6 +57,7 @@ def use_case_summary(request: Request) -> UseCaseSummary:
     return UseCaseSummary(
         use_case_name=config.display_name,
         domain=config.name,
+        langsmith_project=config.langsmith_project,
         entity_name=config.entities.name,
         output_schema_fields=list(config.output_schema.fields),
         data_sources_loaded=[

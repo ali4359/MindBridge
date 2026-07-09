@@ -52,6 +52,7 @@ def test_health_and_use_case(light_client) -> None:
     payload = summary.json()
     assert payload["use_case_name"] == "MindBridge Clinical Copilot"
     assert payload["domain"] == "mental_health"
+    assert payload["langsmith_project"] == "mental_health-traces"
     assert payload["entity_name"] == "patient"
     assert "subjective" in payload["output_schema_fields"]
     assert payload["chunk_count"] == 0
