@@ -52,6 +52,7 @@ class UseCaseSummary(BaseModel):
 
     use_case_name: str
     domain: str
+    langsmith_project: str
     entity_name: str
     output_schema_fields: list[str]
     data_sources_loaded: list[dict[str, str]]

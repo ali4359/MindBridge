@@ -299,6 +299,14 @@ class EvaluationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     golden_set: Optional[str] = None
+    metrics: list[str] = Field(
+        default_factory=lambda: [
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+        ]
+    )
     ragas_target_scores: dict[str, float] = Field(default_factory=dict)
     retrieval_precision_threshold: int = 8
     retrieval_case_count: int = 10
@@ -320,6 +328,11 @@ class EvaluationConfig(BaseModel):
             ),
         ]
     )
+
+    @property
+    def target_scores(self) -> dict[str, float]:
+        """Alias for ``ragas_target_scores`` used by the RAGAS runner."""
+        return self.ragas_target_scores
 
 
 class LlmConfig(BaseModel):
@@ -371,6 +384,19 @@ class UseCaseConfig(BaseModel):
             return None
         return self.resolve_path(self.evaluation.golden_set, base=base)
 
+    @property
+    def langsmith_project(self) -> str:
+        """LangSmith project name for isolated trace dashboards per profile."""
+        return f"{self.name}-traces"
+
+
+def _finalize_config(config: UseCaseConfig) -> UseCaseConfig:
+    """Apply runtime side effects after a profile is validated."""
+    from core.tracing import configure_langsmith_project
+
+    configure_langsmith_project(config)
+    return config
+
 
 def load_config(path: str) -> UseCaseConfig:
     """Read a YAML use-case profile and return a validated ``UseCaseConfig``."""
@@ -388,7 +414,7 @@ def load_config(path: str) -> UseCaseConfig:
             f"Config root must be a mapping, got {type(raw).__name__}: {config_path}"
         )
 
-    return UseCaseConfig.model_validate(raw)
+    return _finalize_config(UseCaseConfig.model_validate(raw))
 
 
 DEFAULT_USE_CASE_CONFIG = "configs/mental_health.yaml"

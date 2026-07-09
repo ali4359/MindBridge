@@ -274,6 +274,11 @@ safety:
 
 evaluation:
   golden_set: evaluation/golden/mental_health.jsonl
+  metrics:
+    - faithfulness
+    - answer_relevancy
+    - context_precision
+    - context_recall
   ragas_target_scores:
     faithfulness: 0.80
     answer_relevancy: 0.75
