@@ -37,7 +37,7 @@ class _StaticRetriever(BaseRetriever):
 def test_load_eval_dataset_mental_health() -> None:
     config = load_config("configs/mental_health.yaml")
     cases = load_eval_dataset(config)
-    assert len(cases) >= 3
+    assert len(cases) == 20
     assert "question" in cases[0]
     assert "ground_truth" in cases[0]
 
