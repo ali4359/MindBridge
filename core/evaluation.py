@@ -6,6 +6,7 @@ import csv
 import importlib
 import logging
 import math
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,7 +94,9 @@ def resolve_metrics(metric_names: list[str]) -> list[Any]:
 def build_judge_llm(config: UseCaseConfig) -> LangchainLLMWrapper:
     """Configure RAGAS with a Groq-backed LangChain LLM judge."""
     groq_llm: ChatGroq = build_llm(config)
-    return LangchainLLMWrapper(groq_llm)
+    # Groq only accepts n=1, but metrics like answer_relevancy request n=strictness (default 3).
+    # bypass_n makes RAGAS issue sequential single-completion calls instead of setting ChatGroq.n.
+    return LangchainLLMWrapper(groq_llm, bypass_n=True)
 
 
 def ragas_results_path(config: UseCaseConfig, *, base: Path = REPO_ROOT) -> Path:
@@ -232,6 +235,7 @@ def build_ragas_samples(
 ) -> list[dict[str, Any]]:
     """Run the RAG chain over golden questions and assemble RAGAS rows."""
     rows: list[dict[str, Any]] = []
+    pause_seconds = max(0.0, config.evaluation.sample_pause_seconds)
     for index, case in enumerate(cases, start=1):
         question = case.get("question") or case.get("user_input")
         ground_truth = case.get("ground_truth") or case.get("reference")
@@ -255,6 +259,9 @@ def build_ragas_samples(
                 "reference": ground_truth,
             }
         )
+        # Gentle pacing reduces provider-side rate-limit spikes during eval runs.
+        if pause_seconds > 0 and index < len(cases):
+            time.sleep(pause_seconds)
     return rows
 
 
@@ -265,6 +272,8 @@ def run_evaluation(
     retriever: Optional[BaseRetriever] = None,
     base_dir: Path = REPO_ROOT,
     show_progress: bool = False,
+    max_cases: Optional[int] = None,
+    metric_names_override: Optional[list[str]] = None,
 ) -> EvaluationRunResult:
     """Run RAGAS for the active use case and return scores with pass/fail.
 
@@ -274,7 +283,10 @@ def run_evaluation(
     ``evaluation/{name}_ragas_results.csv``.
     """
     cases = load_eval_dataset(config)
-    metric_names = config.evaluation.metrics or list(DEFAULT_METRICS)
+    if max_cases is not None:
+        cases = cases[:max_cases]
+
+    metric_names = metric_names_override or config.evaluation.metrics or list(DEFAULT_METRICS)
     metrics = resolve_metrics(metric_names)
 
     samples = build_ragas_samples(
@@ -301,10 +313,15 @@ def run_evaluation(
         embeddings=embeddings,
         show_progress=show_progress,
         raise_exceptions=False,
+        batch_size=config.evaluation.ragas_batch_size,
     )
 
     scores = aggregate_scores(result)
-    targets = config.evaluation.target_scores
+    targets = {
+        metric_name: threshold
+        for metric_name, threshold in config.evaluation.target_scores.items()
+        if metric_name in metric_names
+    }
     pass_fail = compare_to_targets(scores, targets)
 
     output_path = ragas_results_path(config, base=base_dir)

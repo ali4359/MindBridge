@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Literal, Optional
 
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_core.documents import Document
@@ -241,6 +242,318 @@ class DualIndexResult:
     status: str = "ok"
 
 
+SESSION_NOTE_FILENAME_RE = re.compile(r"^synthetic_session_(\d{2})_.*\.txt$", re.IGNORECASE)
+
+
+def strip_note_headers(text: str) -> str:
+    """Remove leading ``#`` comment lines from generated session-note files."""
+    lines = text.splitlines()
+    while lines and lines[0].strip().startswith("#"):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def parse_session_note_number(path: Path) -> int:
+    """Extract the session ordinal from a synthetic note filename."""
+    match = SESSION_NOTE_FILENAME_RE.match(path.name)
+    if not match:
+        raise ValueError(
+            f"Cannot parse session number from {path.name!r} "
+            "(expected synthetic_session_NN_*.txt)"
+        )
+    return int(match.group(1))
+
+
+def session_notes_dir(config: UseCaseConfig, *, base_dir: Path = REPO_ROOT) -> Path:
+    """Resolve the directory containing generated ``.txt`` session notes."""
+    return base_dir / config.data.session_notes.output_dir
+
+
+def load_session_note_files(
+    config: UseCaseConfig,
+    *,
+    base_dir: Path = REPO_ROOT,
+) -> list[tuple[int, Path, str]]:
+    """Load all ``.txt`` session notes sorted by session number."""
+    notes_dir = session_notes_dir(config, base_dir=base_dir)
+    if not notes_dir.is_dir():
+        raise FileNotFoundError(f"Session notes directory not found: {notes_dir}")
+
+    paths = sorted(notes_dir.glob("synthetic_session_*.txt"))
+    if not paths:
+        raise FileNotFoundError(f"No synthetic_session_*.txt files in {notes_dir}")
+
+    loaded: list[tuple[int, Path, str]] = []
+    for path in paths:
+        session_number = parse_session_note_number(path)
+        note_text = strip_note_headers(path.read_text(encoding="utf-8"))
+        if not note_text:
+            logger.warning("Skipping empty session note %s", path.name)
+            continue
+        loaded.append((session_number, path, note_text))
+
+    loaded.sort(key=lambda item: item[0])
+    logger.info("Loaded %d session note file(s) from %s", len(loaded), notes_dir)
+    return loaded
+
+
+def ingest_session_note_vector_only(
+    *,
+    entity_id: str,
+    session_number: int,
+    session_date: str,
+    note_text: str,
+    config: UseCaseConfig,
+    base_dir: Path = REPO_ROOT,
+    session_id: Optional[str] = None,
+) -> int:
+    """Chunk and embed a session note into Chroma without graph extraction."""
+    from core.vectorstore import append_documents
+
+    resolved_session_id = session_id or f"{entity_id}-session-{session_number}"
+    chunks = chunk_session_note(
+        note_text,
+        config,
+        entity_id=entity_id,
+        session_number=session_number,
+        session_date=session_date,
+        session_id=resolved_session_id,
+    )
+    return append_documents(chunks, config, base_dir=base_dir)
+
+
+GraphIngestMode = Literal["off", "shell", "full"]
+
+
+def _existing_session_numbers(
+    config: UseCaseConfig,
+    entity_id: str,
+    *,
+    base_dir: Path = REPO_ROOT,
+) -> set[int]:
+    """Return session ordinals already indexed for ``entity_id`` in Chroma."""
+    from core.vectorstore import load_vectorstore, lookup_entity_documents
+
+    try:
+        vectorstore = load_vectorstore(config, base_dir=base_dir)
+    except FileNotFoundError:
+        return set()
+
+    numbers: set[int] = set()
+    for doc in lookup_entity_documents(vectorstore, entity_id):
+        session_number = doc.metadata.get("session_number")
+        if isinstance(session_number, int):
+            numbers.add(session_number)
+    return numbers
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return "429" in message or "rate_limit" in message or "rate limit" in message
+
+
+@dataclass(frozen=True)
+class BulkSessionIngestResult:
+    """Outcome of bulk-ingesting demo session notes."""
+
+    files_processed: int
+    chunks_indexed: int
+    entities_extracted: int
+    entity_id: str
+    session_ids: list[str]
+    graph_mode: GraphIngestMode
+    files_skipped: int = 0
+
+
+def ingest_all_session_notes(
+    config: UseCaseConfig,
+    *,
+    entity_id: str = "patient-demo",
+    base_dir: Path = REPO_ROOT,
+    graph_mode: GraphIngestMode = "full",
+    vector_only: bool = False,
+    llm=None,
+    driver=None,
+    session_date_prefix: str = "2026-01",
+    resume: bool = False,
+    graph_only: bool = False,
+    pause_seconds: float = 0.0,
+    max_rate_limit_retries: int = 5,
+) -> BulkSessionIngestResult:
+    """Ingest every ``.txt`` session note under the profile's session_notes dir."""
+    if vector_only:
+        graph_mode = "off"
+
+    if graph_mode != "off" and config.graph_schema is None:
+        raise ValueError(
+            f"Profile {config.name!r} has no graph_schema; use graph_mode='off'"
+        )
+
+    notes = load_session_note_files(config, base_dir=base_dir)
+    existing_sessions = _existing_session_numbers(config, entity_id, base_dir=base_dir) if resume else set()
+    total_chunks = 0
+    total_entities = 0
+    session_ids: list[str] = []
+    skipped = 0
+
+    if graph_mode in {"shell", "full"}:
+        if driver is None:
+            from core.graph import get_graph_driver
+
+            driver = get_graph_driver()
+        if graph_mode == "full" and llm is None:
+            from core.llm import build_llm
+
+            llm = build_llm(config)
+
+    import time
+
+    for session_number, path, note_text in notes:
+        if resume and session_number in existing_sessions:
+            logger.info("Skipping session %d — already indexed for %s", session_number, entity_id)
+            skipped += 1
+            continue
+
+        session_date = f"{session_date_prefix}-{session_number:02d}"
+        resolved_session_id = f"{entity_id}-session-{session_number}"
+        logger.info(
+            "Ingesting session %d from %s → %s",
+            session_number,
+            path.name,
+            resolved_session_id,
+        )
+
+        if graph_mode == "off":
+            chunks_indexed = ingest_session_note_vector_only(
+                entity_id=entity_id,
+                session_number=session_number,
+                session_date=session_date,
+                note_text=note_text,
+                config=config,
+                base_dir=base_dir,
+                session_id=resolved_session_id,
+            )
+            total_chunks += chunks_indexed
+        elif graph_only:
+            use_llm = graph_mode == "full"
+            for attempt in range(max_rate_limit_retries + 1):
+                try:
+                    result = ingest_session_note_graph_only(
+                        entity_id=entity_id,
+                        session_number=session_number,
+                        session_date=session_date,
+                        note_text=note_text,
+                        config=config,
+                        llm=llm,
+                        driver=driver,
+                        session_id=resolved_session_id,
+                        use_llm_extraction=use_llm,
+                    )
+                    break
+                except Exception as exc:
+                    if use_llm and _is_rate_limit_error(exc) and attempt < max_rate_limit_retries:
+                        wait_seconds = min(60 * (attempt + 1), 300)
+                        logger.warning(
+                            "Groq rate limit on session %d (attempt %d/%d); waiting %ds",
+                            session_number,
+                            attempt + 1,
+                            max_rate_limit_retries,
+                            wait_seconds,
+                        )
+                        time.sleep(wait_seconds)
+                        continue
+                    raise
+            total_entities += result.entities_extracted
+            if pause_seconds > 0 and use_llm:
+                time.sleep(pause_seconds)
+        else:
+            use_llm = graph_mode == "full"
+            for attempt in range(max_rate_limit_retries + 1):
+                try:
+                    result = ingest_session_note(
+                        entity_id=entity_id,
+                        session_number=session_number,
+                        session_date=session_date,
+                        note_text=note_text,
+                        config=config,
+                        llm=llm,
+                        driver=driver,
+                        base_dir=base_dir,
+                        session_id=resolved_session_id,
+                        use_llm_extraction=use_llm,
+                    )
+                    break
+                except Exception as exc:
+                    if use_llm and _is_rate_limit_error(exc) and attempt < max_rate_limit_retries:
+                        wait_seconds = min(60 * (attempt + 1), 300)
+                        logger.warning(
+                            "Groq rate limit on session %d (attempt %d/%d); waiting %ds",
+                            session_number,
+                            attempt + 1,
+                            max_rate_limit_retries,
+                            wait_seconds,
+                        )
+                        time.sleep(wait_seconds)
+                        continue
+                    raise
+
+            total_chunks += result.chunks_indexed
+            total_entities += result.entities_extracted
+            if pause_seconds > 0 and use_llm:
+                time.sleep(pause_seconds)
+
+        session_ids.append(resolved_session_id)
+
+    logger.info(
+        "Bulk ingest complete: %d file(s), %d skipped, %d chunk(s), entity=%s, mode=%s",
+        len(session_ids),
+        skipped,
+        total_chunks,
+        entity_id,
+        graph_mode,
+    )
+    return BulkSessionIngestResult(
+        files_processed=len(session_ids),
+        chunks_indexed=total_chunks,
+        entities_extracted=total_entities,
+        entity_id=entity_id,
+        session_ids=session_ids,
+        graph_mode=graph_mode,
+        files_skipped=skipped,
+    )
+
+
+def ingest_session_note_graph_only(
+    *,
+    entity_id: str,
+    session_number: int,
+    session_date: str,
+    note_text: str,
+    config: UseCaseConfig,
+    llm,
+    driver,
+    session_id: Optional[str] = None,
+    use_llm_extraction: bool = True,
+) -> DualIndexResult:
+    """Write session entities to Neo4j without appending to Chroma."""
+    from core.graph import empty_extraction_payload, extract_entities, write_to_graph
+
+    resolved_session_id = session_id or f"{entity_id}-session-{session_number}"
+    if use_llm_extraction:
+        entities = extract_entities(note_text, config, llm)
+    else:
+        entities = empty_extraction_payload(config)
+    write_to_graph(entities, entity_id, resolved_session_id, config, driver)
+
+    return DualIndexResult(
+        chunks_indexed=0,
+        entities_extracted=count_extracted_entities(entities),
+        entities=entities,
+        session_id=resolved_session_id,
+        status="ok",
+    )
+
+
 def ingest_session_note(
     *,
     entity_id: str,
@@ -252,9 +565,10 @@ def ingest_session_note(
     driver,
     base_dir: Path = REPO_ROOT,
     session_id: Optional[str] = None,
+    use_llm_extraction: bool = True,
 ) -> DualIndexResult:
     """Chunk/embed into Chroma and extract/write entities into Neo4j."""
-    from core.graph import extract_entities, write_to_graph
+    from core.graph import empty_extraction_payload, extract_entities, write_to_graph
     from core.vectorstore import append_documents
 
     resolved_session_id = session_id or f"{entity_id}-session-{session_number}"
@@ -268,7 +582,10 @@ def ingest_session_note(
     )
     chunks_indexed = append_documents(chunks, config, base_dir=base_dir)
 
-    entities = extract_entities(note_text, config, llm)
+    if use_llm_extraction:
+        entities = extract_entities(note_text, config, llm)
+    else:
+        entities = empty_extraction_payload(config)
     write_to_graph(entities, entity_id, resolved_session_id, config, driver)
 
     return DualIndexResult(
