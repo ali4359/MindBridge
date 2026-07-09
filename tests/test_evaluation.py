@@ -45,8 +45,12 @@ def test_load_eval_dataset_mental_health() -> None:
 def test_load_eval_dataset_legal() -> None:
     config = load_config("configs/legal.yaml")
     cases = load_eval_dataset(config)
-    assert len(cases) >= 3
-    assert "Hadley" in cases[0]["ground_truth"]
+    assert len(cases) == 10
+    assert "question" in cases[0]
+    assert "ground_truth" in cases[0]
+    topics = " ".join(case["ground_truth"] for case in cases)
+    assert "Hadley" in topics
+    assert "UCC" in topics
 
 
 def test_resolve_metrics_defaults() -> None:
