@@ -278,6 +278,39 @@ def test_initialize_platform_stores_state(monkeypatch) -> None:
     assert application.state.config.name == "mental_health"
 
 
+def test_initialize_platform_initialises_agent(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.delenv("MINDBRIDGE_LIGHT_STARTUP", raising=False)
+
+    fake_collection = MagicMock()
+    fake_collection.count.return_value = 0
+    fake_vs = MagicMock()
+    fake_vs._collection = fake_collection
+
+    with (
+        patch("backend.main.validate_config"),
+        patch("backend.main.get_embeddings", return_value=MagicMock()),
+        patch("backend.main.load_vectorstore", return_value=fake_vs),
+        patch("backend.main.documents_from_vectorstore", return_value=[]),
+        patch("backend.main.build_llm", return_value=MagicMock()),
+        patch("backend.main.build_retriever", return_value=MagicMock()),
+        patch("backend.main.build_chain", return_value=MagicMock()),
+        patch("backend.main._connect_neo4j", return_value=MagicMock()),
+    ):
+        from backend.main import create_app, initialize_platform
+
+        application = create_app()
+        with caplog.at_level("INFO", logger="backend.main"):
+            initialize_platform(application)
+
+    assert application.state.source_system is not None
+    assert application.state.source_system.adapter is None
+    assert application.state.cache is not None
+    assert application.state.agent is not None
+    assert application.state.router is not None
+    assert any("Agent initialised with 6 tools" in record.message for record in caplog.records)
+
+
 def test_entity_profile_from_vector_lookup(light_client) -> None:
     docs = [
         Document(

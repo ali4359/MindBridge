@@ -134,12 +134,16 @@ def build_chain(
     *,
     entity_id: Optional[str] = None,
     driver: Optional[Driver] = None,
+    entity_context: Optional[str] = None,
 ) -> Runnable[str, str]:
     """Assemble a config-driven RAG chain using LCEL pipe syntax.
 
     When ``entity_id`` is provided, the chain calls ``read_entity_graph()``,
     formats the subgraph, and injects it under ``config.prompts.entity_context_header``.
     The LLM then sees: entity graph summary + retrieved knowledge chunks + question.
+
+    Pass ``entity_context`` to use pre-loaded text (e.g. a cache hit) instead of
+    reading the graph.
     """
     prompt = build_prompt(config)
 
@@ -147,6 +151,8 @@ def build_chain(
         return format_retrieved_context(documents, config)
 
     def _entity_context(_question: str) -> str:
+        if entity_context is not None:
+            return entity_context
         return load_entity_context(entity_id=entity_id, config=config, driver=driver)
 
     chain: Runnable[str, str] = (

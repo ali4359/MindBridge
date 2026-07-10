@@ -30,6 +30,7 @@ class QueryResponse(BaseModel):
     citations: list[Citation]
     safety_status: str
     session_id: str
+    route_used: str
 
 
 class GenerateOutputRequest(BaseModel):
