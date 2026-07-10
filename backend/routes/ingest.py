@@ -27,7 +27,7 @@ class IngestRequest(BaseModel):
     )
     session_date: Optional[str] = Field(
         default=None,
-        description="Session date (preferred alias kept for existing clients)",
+        description="Session date (preferred alias kept for existing callers)",
     )
     session_number: Optional[int] = Field(
         default=None,

@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def build_llm(config: UseCaseConfig) -> ChatGroq:
-    """Build a ChatGroq client from ``config.llm`` (reads ``GROQ_API_KEY`` from ``.env``)."""
+    """Build a ChatGroq chat model from ``config.llm`` (reads ``GROQ_API_KEY`` from ``.env``)."""
     load_dotenv(REPO_ROOT / ".env")
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:

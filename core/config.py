@@ -338,6 +338,33 @@ class LlmConfig(BaseModel):
     max_tokens: int = 1024
 
 
+class RouterConfig(BaseModel):
+    """Keyword signals used to route a query between RAG and agent handling."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rag_signals: list[str] = Field(default_factory=list)
+    agent_signals: list[str] = Field(default_factory=list)
+
+
+class AgentConfig(BaseModel):
+    """System prompt and settings for the agent-mode handler."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str = ""
+
+
+class SourceSystemConfig(BaseModel):
+    """External system labels for the entity/session ingestion adapter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_label: str = ""
+    session_label: str = ""
+    adapter: str = ""
+
+
 class UseCaseConfig(BaseModel):
     """Root profile loaded from a single YAML file — all platform layers read from this."""
 
@@ -358,6 +385,9 @@ class UseCaseConfig(BaseModel):
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
+    router: Optional[RouterConfig] = None
+    agent: Optional[AgentConfig] = None
+    source_system: Optional[SourceSystemConfig] = None
 
     def resolve_path(self, value: str, *, base: Path) -> Path:
         """Resolve a config path relative to ``base`` (typically the repo root)."""

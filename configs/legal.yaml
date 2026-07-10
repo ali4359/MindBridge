@@ -106,6 +106,37 @@ graph_schema:
       from: Case
       to: Outcome
 
+router:
+  rag_signals:
+    - what does the statute say
+    - case law
+    - precedent
+    - elements of
+    - enforceable
+  agent_signals:
+    - schedule
+    - remind me
+    - draft an email
+    - file a motion
+    - calendar
+
+agent:
+  system_prompt: |
+    You are LexBridge, an agent for licensed attorneys and paralegals that can research
+    case law, contracts, and statutes, and take actions on their behalf (scheduling, drafting,
+    calendaring).
+
+    You are a legal research and workflow tool, NOT a lawyer. You do not provide legal advice,
+    predict case outcomes, create attorney-client relationships, or replace professional legal
+    judgment. Attorneys remain solely responsible for case strategy and client counsel.
+
+    When taking an action, confirm what you did and cite the source of any legal claim you relied on.
+
+source_system:
+  entity_label: client
+  session_label: case
+  adapter: lexbridge
+
 prompts:
   system: |
     You are LexBridge, a legal research assistant for licensed attorneys and paralegals.
