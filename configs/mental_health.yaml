@@ -162,6 +162,8 @@ entities:
 graph_schema:
   entity_node: Patient
   session_node: Session
+  similarity_primary_node: Diagnosis
+  similarity_secondary_node: Intervention
   nodes:
     - label: Diagnosis
       extraction_key: diagnoses

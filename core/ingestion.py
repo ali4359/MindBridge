@@ -368,7 +368,7 @@ class BulkSessionIngestResult:
 def ingest_all_session_notes(
     config: UseCaseConfig,
     *,
-    entity_id: str = "patient-demo",
+    entity_id: str = "demo-entity",
     base_dir: Path = REPO_ROOT,
     graph_mode: GraphIngestMode = "full",
     vector_only: bool = False,
@@ -598,7 +598,7 @@ def ingest_session_note(
 
 
 def main() -> None:
-    """CLI: ``USE_CASE_CONFIG=configs/legal.yaml python -m core.ingestion``"""
+    """CLI: ``USE_CASE_CONFIG=configs/<profile>.yaml python -m core.ingestion``"""
     from dotenv import load_dotenv
 
     from core.config import USE_CASE_CONFIG_ENV, load_active_config, resolve_config_path

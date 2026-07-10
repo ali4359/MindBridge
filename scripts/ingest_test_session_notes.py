@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         default=None,
-        help=f"YAML profile (default: ${USE_CASE_CONFIG_ENV} or configs/mental_health.yaml)",
+        help=f"YAML profile path (or set ${USE_CASE_CONFIG_ENV}); required if neither is set",
     )
     parser.add_argument(
         "--entity-id",

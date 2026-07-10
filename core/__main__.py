@@ -100,7 +100,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--config",
         default=None,
-        help=f"YAML profile (default: ${USE_CASE_CONFIG_ENV} or configs/mental_health.yaml)",
+        help=f"YAML profile path (or set ${USE_CASE_CONFIG_ENV}); required if neither is set",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

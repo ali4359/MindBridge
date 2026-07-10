@@ -77,6 +77,8 @@ entities:
 graph_schema:
   entity_node: Client
   session_node: Case
+  similarity_primary_node: Statute
+  similarity_secondary_node: Precedent
   nodes:
     - label: Statute
       extraction_key: statutes

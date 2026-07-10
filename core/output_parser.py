@@ -19,9 +19,8 @@ def _resolve_model_name(config: UseCaseConfig) -> str:
 def build_output_schema(config: UseCaseConfig) -> Type[BaseModel]:
     """Create a Pydantic model at runtime from ``config.output_schema.fields``.
 
-  For ``mental_health.yaml`` this returns a ``SOAPNote`` model with
-  ``(subjective, objective, assessment, plan)``. For ``legal.yaml`` it returns
-  a ``LegalBrief`` model with ``(issue, rule, analysis, conclusion)``.
+  The model name and field list are entirely config-driven: each use-case profile's
+  ``output_schema.model_name`` and ``output_schema.fields`` determine the shape.
   """
     schema = config.output_schema
     if not schema.fields:

@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
 from core.config import (
-    DEFAULT_USE_CASE_CONFIG,
     load_active_config,
     resolve_config_path,
 )
 
 
-def test_resolve_config_path_default(monkeypatch) -> None:
+def test_resolve_config_path_requires_explicit_selection(monkeypatch) -> None:
     monkeypatch.delenv("USE_CASE_CONFIG", raising=False)
-    assert resolve_config_path() == DEFAULT_USE_CASE_CONFIG
+    with pytest.raises(RuntimeError):
+        resolve_config_path()
 
 
 def test_resolve_config_path_explicit() -> None:
