@@ -597,6 +597,34 @@ def ingest_session_note(
     )
 
 
+def ingest_trajectory_document(
+    *,
+    entity_id: str,
+    note_text: str,
+    config: UseCaseConfig,
+    base_dir: Path = REPO_ROOT,
+) -> int:
+    """Chunk and append a trajectory narrative with ``doc_type='trajectory'``."""
+    from core.vectorstore import append_documents
+
+    text = note_text.strip()
+    if not text:
+        return 0
+
+    document = Document(
+        page_content=text,
+        metadata={
+            "source": f"trajectory:{entity_id}",
+            "doc_type": "trajectory",
+            "page_number": 1,
+            "entity_id": entity_id,
+            "session_id": f"{entity_id}-trajectory",
+        },
+    )
+    chunks = chunk_documents([document], config)
+    return append_documents(chunks, config, base_dir=base_dir)
+
+
 def main() -> None:
     """CLI: ``USE_CASE_CONFIG=configs/<profile>.yaml python -m core.ingestion``"""
     from dotenv import load_dotenv

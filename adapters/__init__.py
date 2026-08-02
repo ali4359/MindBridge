@@ -17,6 +17,22 @@ ADAPTER_REGISTRY: dict[str, Type[BaseAdapter]] = {
 }
 
 
+def is_raw_vendor_document(body: dict) -> bool:
+    """True when the payload looks like a native vendor session record."""
+    if not isinstance(body, dict):
+        return False
+    return any(
+        key in body
+        for key in (
+            "patientId",
+            "coachNotes",
+            "sessionNumber",
+            "sessionHomeworkResponses",
+            "midWeekResponses",
+        )
+    )
+
+
 def create_adapter(name: str, **kwargs: Any) -> Optional[BaseAdapter]:
     """Instantiate the adapter registered under ``name``, or ``None`` if unknown."""
     if not name:
@@ -34,4 +50,5 @@ __all__ = [
     "MindBridgePayload",
     "RauhaAdapter",
     "create_adapter",
+    "is_raw_vendor_document",
 ]

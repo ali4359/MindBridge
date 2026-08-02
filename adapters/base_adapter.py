@@ -34,11 +34,18 @@ class BaseAdapter(ABC):
     abstract methods; ``compile_generic`` ships a JSON→text default.
     """
 
+    #: Session ordinals that should trigger a trajectory document after ingest.
+    trajectory_trigger_sessions: frozenset[int] = frozenset()
+
     # --- Ingest -------------------------------------------------------------
 
     @abstractmethod
     def transform(self, raw_document: Any) -> MindBridgePayload:
         """Map a vendor-native document into a :class:`MindBridgePayload`."""
+
+    def build_trajectory(self, entity_id: str, sessions: list) -> Optional[str]:
+        """Optional trajectory narrative. Default: not supported."""
+        return None
 
     # --- Fetch --------------------------------------------------------------
 

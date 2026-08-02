@@ -10,6 +10,7 @@ import httpx
 from adapters.base_adapter import BaseAdapter, MindBridgePayload
 from adapters.rauha.entity_extractor import extract_entities
 from adapters.rauha.note_compiler import compile_session_note
+from adapters.rauha.trajectory import build_trajectory_note
 
 
 class RauhaAdapter(BaseAdapter):
@@ -19,6 +20,8 @@ class RauhaAdapter(BaseAdapter):
     constructor args are omitted so domain-specific env names stay inside this
     package (never in ``backend/`` or ``core/``).
     """
+
+    trajectory_trigger_sessions: frozenset[int] = frozenset({8, 10})
 
     def __init__(
         self,
@@ -32,6 +35,11 @@ class RauhaAdapter(BaseAdapter):
         self.token = token if token is not None else os.environ.get("RAUHA_API_TOKEN", "")
         self.timeout = timeout
         self.use_case = use_case
+
+    def build_trajectory(self, entity_id: str, sessions: list) -> Optional[str]:
+        if not sessions:
+            return None
+        return build_trajectory_note(entity_id, sessions)
 
     # --- HTTP helpers -------------------------------------------------------
 

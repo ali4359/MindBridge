@@ -149,11 +149,13 @@ entities:
     - guideline
     - session_note
     - research
+    - trajectory
   category_to_doc_type:
     guidelines: guideline
     session_notes: session_note
     research: research
     workbooks: research
+    trajectory: trajectory
   metadata_fields:
     - source
     - doc_type
