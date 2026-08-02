@@ -13,11 +13,13 @@ A **config-driven RAG platform**: ingest documents, store embeddings in ChromaDB
 ```
 MindBridge/
 ├── configs/        # Per-use-case YAML profiles
+├── adapters/       # Vendor source-system adapters (Rauha, generic, …)
 ├── ingestion/      # PDF load, chunk, embed, index
 ├── retrieval/      # vector search, FlashRank rerank, hybrid fusion
 ├── chains/         # LangChain QA / pipeline logic (prompts swappable via config)
 ├── evaluation/     # RAGAS metrics and eval scripts
 ├── app/            # Streamlit / API entrypoints (config-aware)
+├── backend/        # FastAPI platform API
 ├── data/           # source files + ChromaDB (not committed)
 ├── requirements.txt
 └── .venv/
@@ -40,11 +42,12 @@ MindBridge/
 | If the task involves… | Work in… |
 |----------------------|----------|
 | Use-case YAML, profile switching | `configs/` |
+| External EHR / source-system adapters | `adapters/` |
 | Loading or indexing documents | `ingestion/` |
 | Search, similarity, reranking | `retrieval/` |
 | Prompts, LLM chains, RAG logic | `chains/` |
 | Measuring answer quality | `evaluation/` |
-| UI, API, user interaction | `app/` |
+| UI, API, user interaction | `app/` / `backend/` |
 | Sample PDFs or vector DB files | `data/` |
 
 ## Reference use case

@@ -16,6 +16,7 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from adapters import ADAPTER_REGISTRY, create_adapter
 from backend.routes.entity import router as entity_router
 from backend.routes.ingest import router as ingest_router
 from backend.routes.output import router as output_router
@@ -23,7 +24,7 @@ from backend.routes.platform import router as platform_router
 from backend.routes.query import router as query_router
 from core.agent import build_agent
 from core.chain import build_chain
-from core.config import load_active_config, resolve_config_path
+from core.config import UseCaseConfig, load_active_config, resolve_config_path
 from core.embeddings import get_embeddings
 from core.graph import get_graph_driver
 from core.llm import build_llm
@@ -50,6 +51,23 @@ def _connect_neo4j() -> Optional[Any]:
     except Exception as exc:  # noqa: BLE001 — allow boot without a live graph
         logger.warning("Neo4j unavailable at startup: %s", exc)
         return None
+
+
+def _build_source_system(config: UseCaseConfig) -> SourceSystemInterface:
+    """Resolve ``source_system.adapter`` via :data:`ADAPTER_REGISTRY` and inject it."""
+    adapter = None
+    ss_cfg = config.source_system
+    adapter_name = (ss_cfg.adapter if ss_cfg is not None else "") or ""
+    if adapter_name:
+        if adapter_name not in ADAPTER_REGISTRY:
+            logger.warning(
+                "Unknown source_system.adapter %r — continuing with no adapter",
+                adapter_name,
+            )
+        else:
+            adapter = create_adapter(adapter_name)
+            logger.info("Source-system adapter loaded: %s", adapter_name)
+    return SourceSystemInterface(adapter)
 
 
 def _light_startup(app: FastAPI) -> None:
@@ -96,8 +114,7 @@ def initialize_platform(app: FastAPI) -> int:
     chain = build_chain(config, retriever, llm)
     graph_driver = _connect_neo4j()
 
-    # Vendor adapter injection lands in a later stage; inject None for now.
-    source_system = SourceSystemInterface(None)
+    source_system = _build_source_system(config)
     cache = HybridCache(vectorstore=vectorstore)
     init_tools(source_system, cache, retriever)
     agent = build_agent(config, llm, source_system, cache, retriever=retriever)

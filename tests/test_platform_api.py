@@ -304,7 +304,9 @@ def test_initialize_platform_initialises_agent(monkeypatch, caplog) -> None:
             initialize_platform(application)
 
     assert application.state.source_system is not None
-    assert application.state.source_system.adapter is None
+    # mental_health.yaml declares source_system.adapter — resolve via ADAPTER_REGISTRY
+    assert application.state.source_system.adapter is not None
+    assert application.state.source_system.adapter.__class__.__name__ == "RauhaAdapter"
     assert application.state.cache is not None
     assert application.state.agent is not None
     assert application.state.router is not None
