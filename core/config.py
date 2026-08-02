@@ -69,7 +69,7 @@ class DataSourceConfig(BaseModel):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dim: int = 384
     embedding_sample_sentence: str = (
-        "Cognitive behavioral therapy helps patients identify unhelpful thought patterns."
+        "This sentence is used to verify the embedding model loads correctly."
     )
     user_agent: str = (
         "MindBridge/0.1 (+https://github.com/mindbridge; research RAG demo; contact: local-dev)"
@@ -144,12 +144,23 @@ class GraphSchemaConfig(BaseModel):
     entity_session_relationship: Optional[str] = None
     nodes: list[GraphNodeConfig] = Field(default_factory=list)
     relationships: list[GraphRelationshipConfig] = Field(default_factory=list)
+    similarity_primary_node: Optional[str] = None
+    similarity_secondary_node: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_graph_schema(self) -> GraphSchemaConfig:
         known_labels = {self.entity_node, self.session_node} | {
             node.label for node in self.nodes
         }
+
+        for field_name, label in (
+            ("similarity_primary_node", self.similarity_primary_node),
+            ("similarity_secondary_node", self.similarity_secondary_node),
+        ):
+            if label is not None and label not in known_labels:
+                raise ValueError(
+                    f"graph_schema.{field_name}: unknown label {label!r}"
+                )
 
         for rel in self.relationships:
             if rel.from_ not in known_labels:
@@ -211,7 +222,7 @@ class EntityConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = "patient"
+    name: str = "entity"
     profile_fields: list[str] = Field(default_factory=list)
     doc_types: list[str] = Field(
         default_factory=lambda: ["guideline", "session_note", "research"]
@@ -263,20 +274,12 @@ class SafetyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    audience: str = "licensed mental health professionals"
+    audience: str = "licensed professionals"
     disclaimer: str = (
-        "This assistant is a clinical knowledge tool, not a clinician. "
-        "It does not diagnose, prescribe treatment, provide crisis intervention, "
-        "or replace professional clinical judgment."
+        "This assistant is an informational tool, not a licensed professional. "
+        "It does not replace professional judgment."
     )
-    prohibited_capabilities: list[str] = Field(
-        default_factory=lambda: [
-            "diagnose",
-            "prescribe",
-            "crisis_intervention",
-            "replace_clinical_judgment",
-        ]
-    )
+    prohibited_capabilities: list[str] = Field(default_factory=list)
     flag_patterns: list[str] = Field(default_factory=list)
     fallback_message: str = (
         "I cannot provide that response because it may violate safety guidelines "
@@ -315,21 +318,9 @@ class EvaluationConfig(BaseModel):
     ragas_batch_size: Optional[int] = None
     retrieval_baseline_cases: list[RetrievalBaselineCase] = Field(default_factory=list)
     keyword_test_queries: list[str] = Field(default_factory=list)
-    hybrid_test_query: str = "DBT distress tolerance skills"
-    similarity_test_query: str = "CBT for depression"
-    sample_queries: list[str] = Field(
-        default_factory=lambda: [
-            (
-                "What does the NICE guideline recommend as first-line pharmacological "
-                "treatment for depression in adults?"
-            ),
-            "What DBT distress tolerance skills can I teach a client for crisis survival?",
-            (
-                "How can I use a thought record worksheet with a client who has "
-                "generalized anxiety?"
-            ),
-        ]
-    )
+    hybrid_test_query: str = ""
+    similarity_test_query: str = ""
+    sample_queries: list[str] = Field(default_factory=list)
 
     @property
     def target_scores(self) -> dict[str, float]:
@@ -345,6 +336,33 @@ class LlmConfig(BaseModel):
     model: str = "llama-3.3-70b-versatile"
     temperature: float = 0.0
     max_tokens: int = 1024
+
+
+class RouterConfig(BaseModel):
+    """Keyword signals used to route a query between RAG and agent handling."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rag_signals: list[str] = Field(default_factory=list)
+    agent_signals: list[str] = Field(default_factory=list)
+
+
+class AgentConfig(BaseModel):
+    """System prompt and settings for the agent-mode handler."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system_prompt: str = ""
+
+
+class SourceSystemConfig(BaseModel):
+    """External system labels for the entity/session ingestion adapter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_label: str = ""
+    session_label: str = ""
+    adapter: str = ""
 
 
 class UseCaseConfig(BaseModel):
@@ -367,6 +385,9 @@ class UseCaseConfig(BaseModel):
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
+    router: Optional[RouterConfig] = None
+    agent: Optional[AgentConfig] = None
+    source_system: Optional[SourceSystemConfig] = None
 
     def resolve_path(self, value: str, *, base: Path) -> Path:
         """Resolve a config path relative to ``base`` (typically the repo root)."""
@@ -419,17 +440,22 @@ def load_config(path: str) -> UseCaseConfig:
     return _finalize_config(UseCaseConfig.model_validate(raw))
 
 
-DEFAULT_USE_CASE_CONFIG = "configs/mental_health.yaml"
 USE_CASE_CONFIG_ENV = "USE_CASE_CONFIG"
 
 
 def resolve_config_path(path: Optional[str] = None) -> str:
-    """Resolve the active use-case YAML path from arg, env, or platform default."""
+    """Resolve the active use-case YAML path from arg or ``USE_CASE_CONFIG``; no domain default."""
     if path:
         return path
     import os
 
-    return os.environ.get(USE_CASE_CONFIG_ENV, DEFAULT_USE_CASE_CONFIG)
+    env_path = os.environ.get(USE_CASE_CONFIG_ENV)
+    if not env_path:
+        raise RuntimeError(
+            f"No use-case profile selected: pass --config or set {USE_CASE_CONFIG_ENV} "
+            "to a YAML profile path (see configs/)"
+        )
+    return env_path
 
 
 def load_active_config(path: Optional[str] = None) -> UseCaseConfig:

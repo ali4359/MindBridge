@@ -1,6 +1,7 @@
 """MindBridge platform core: configuration and shared primitives."""
 
 from core.config import (
+    AgentConfig,
     ChunkingConfig,
     DataSourceConfig,
     DataSourceEntryConfig,
@@ -15,8 +16,10 @@ from core.config import (
     PromptsConfig,
     RetrievalBaselineCase,
     RetrievalConfig,
+    RouterConfig,
     SafetyConfig,
     SessionNotesConfig,
+    SourceSystemConfig,
     UseCaseConfig,
     load_active_config,
     load_config,
@@ -69,6 +72,7 @@ from core.evaluation import (
 
 __all__ = [
     "ConfigValidationError",
+    "AgentConfig",
     "ChunkingConfig",
     "DataSourceConfig",
     "DataSourceEntryConfig",
@@ -84,8 +88,10 @@ __all__ = [
     "PromptsConfig",
     "RetrievalBaselineCase",
     "RetrievalConfig",
+    "RouterConfig",
     "SafetyConfig",
     "SessionNotesConfig",
+    "SourceSystemConfig",
     "UseCaseConfig",
     "aggregate_scores",
     "apply_safety",

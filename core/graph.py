@@ -386,18 +386,6 @@ def read_entity_graph(
     return graph
 
 
-def _node_by_extraction_hint(
-    schema: GraphSchemaConfig,
-    *,
-    hints: tuple[str, ...],
-) -> Optional[GraphNodeConfig]:
-    for node in schema.nodes:
-        key = node.extraction_key.lower()
-        if any(hint in key for hint in hints):
-            return node
-    return None
-
-
 def find_similar_entities(
     entity_id: str,
     config: UseCaseConfig,
@@ -405,7 +393,7 @@ def find_similar_entities(
     *,
     limit: int = 5,
 ) -> list[str]:
-    """Find entities with overlapping diagnosis + intervention patterns."""
+    """Find entities with overlapping patterns on the schema's two similarity dimensions."""
     if config.graph_schema is None:
         raise ValueError(
             f"Profile {config.name!r} has no graph_schema; cannot find similar entities"
@@ -417,74 +405,75 @@ def find_similar_entities(
     if entity_session_type is None:
         raise ValueError("graph_schema.entity_session_relationship is not resolved")
 
-    diagnosis_node = _node_by_extraction_hint(
-        schema,
-        hints=("diagnos", "issue", "statute"),
-    )
-    intervention_node = _node_by_extraction_hint(
-        schema,
-        hints=("intervention", "argument", "precedent"),
-    )
-    if diagnosis_node is None or intervention_node is None:
+    if schema.similarity_primary_node is None or schema.similarity_secondary_node is None:
+        raise ValueError(
+            f"Profile {config.name!r} graph_schema must set similarity_primary_node "
+            "and similarity_secondary_node to use find_similar_entities"
+        )
+
+    nodes_by_label = schema.node_by_label()
+    primary_node = nodes_by_label.get(schema.similarity_primary_node)
+    secondary_node = nodes_by_label.get(schema.similarity_secondary_node)
+    if primary_node is None or secondary_node is None:
         return []
 
-    diagnosis_rel_types = _relationship_types_to(
+    primary_rel_types = _relationship_types_to(
         schema,
         from_label=schema.session_node,
-        to_label=diagnosis_node.label,
+        to_label=primary_node.label,
     ) + _relationship_types_to(
         schema,
         from_label=schema.entity_node,
-        to_label=diagnosis_node.label,
+        to_label=primary_node.label,
     )
-    intervention_rel_types = _relationship_types_to(
+    secondary_rel_types = _relationship_types_to(
         schema,
         from_label=schema.session_node,
-        to_label=intervention_node.label,
+        to_label=secondary_node.label,
     ) + _relationship_types_to(
         schema,
         from_label=schema.entity_node,
-        to_label=intervention_node.label,
+        to_label=secondary_node.label,
     )
-    if not diagnosis_rel_types or not intervention_rel_types:
+    if not primary_rel_types or not secondary_rel_types:
         return []
 
-    diagnosis_rel_types = list(dict.fromkeys(diagnosis_rel_types))
-    intervention_rel_types = list(dict.fromkeys(intervention_rel_types))
+    primary_rel_types = list(dict.fromkeys(primary_rel_types))
+    secondary_rel_types = list(dict.fromkeys(secondary_rel_types))
 
-    diagnosis_prop = _node_display_property(diagnosis_node)
-    intervention_prop = _node_display_property(intervention_node)
+    primary_prop = _node_display_property(primary_node)
+    secondary_prop = _node_display_property(secondary_node)
 
     with driver.session() as session:
         result = session.run(
             f"""
             MATCH (e:{schema.entity_node} {{id: $entity_id}})
-                  -[:{entity_session_type}]->(s:{schema.session_node})-[rd]->(d:{diagnosis_node.label})
-            WHERE type(rd) IN $diagnosis_rel_types
-            WITH e, collect(DISTINCT d.{diagnosis_prop}) AS diagnosis_values
-            MATCH (e)-[:{entity_session_type}]->(s2:{schema.session_node})-[ri]->(i:{intervention_node.label})
-            WHERE type(ri) IN $intervention_rel_types
-            WITH diagnosis_values, collect(DISTINCT i.{intervention_prop}) AS intervention_values
+                  -[:{entity_session_type}]->(s:{schema.session_node})-[rp]->(p:{primary_node.label})
+            WHERE type(rp) IN $primary_rel_types
+            WITH e, collect(DISTINCT p.{primary_prop}) AS primary_values
+            MATCH (e)-[:{entity_session_type}]->(s2:{schema.session_node})-[rs]->(sec:{secondary_node.label})
+            WHERE type(rs) IN $secondary_rel_types
+            WITH primary_values, collect(DISTINCT sec.{secondary_prop}) AS secondary_values
             MATCH (other:{schema.entity_node})-[:{entity_session_type}]->(os:{schema.session_node})
             WHERE other.id <> $entity_id
-            OPTIONAL MATCH (os)-[ord]->(od:{diagnosis_node.label})
-            WHERE type(ord) IN $diagnosis_rel_types
-            WITH other, intervention_values, diagnosis_values, collect(DISTINCT od.{diagnosis_prop}) AS other_diagnoses, os
-            OPTIONAL MATCH (os)-[ori]->(oi:{intervention_node.label})
-            WHERE type(ori) IN $intervention_rel_types
-            WITH other, diagnosis_values, intervention_values, other_diagnoses, collect(DISTINCT oi.{intervention_prop}) AS other_interventions
+            OPTIONAL MATCH (os)-[orp]->(op:{primary_node.label})
+            WHERE type(orp) IN $primary_rel_types
+            WITH other, secondary_values, primary_values, collect(DISTINCT op.{primary_prop}) AS other_primary, os
+            OPTIONAL MATCH (os)-[ors]->(osec:{secondary_node.label})
+            WHERE type(ors) IN $secondary_rel_types
+            WITH other, primary_values, secondary_values, other_primary, collect(DISTINCT osec.{secondary_prop}) AS other_secondary
             WITH other,
-                 [x IN diagnosis_values WHERE x IS NOT NULL AND x IN other_diagnoses] AS diagnosis_overlap,
-                 [x IN intervention_values WHERE x IS NOT NULL AND x IN other_interventions] AS intervention_overlap
-            WHERE size(diagnosis_overlap) > 0 AND size(intervention_overlap) > 0
+                 [x IN primary_values WHERE x IS NOT NULL AND x IN other_primary] AS primary_overlap,
+                 [x IN secondary_values WHERE x IS NOT NULL AND x IN other_secondary] AS secondary_overlap
+            WHERE size(primary_overlap) > 0 AND size(secondary_overlap) > 0
             RETURN other.id AS entity_id,
-                   size(diagnosis_overlap) + size(intervention_overlap) AS score
+                   size(primary_overlap) + size(secondary_overlap) AS score
             ORDER BY score DESC, entity_id ASC
             LIMIT $limit
             """,
             entity_id=entity_id,
-            diagnosis_rel_types=diagnosis_rel_types,
-            intervention_rel_types=intervention_rel_types,
+            primary_rel_types=primary_rel_types,
+            secondary_rel_types=secondary_rel_types,
             limit=limit,
         )
         return [

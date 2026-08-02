@@ -208,6 +208,7 @@ def test_post_ingest_endpoint(monkeypatch) -> None:
         "chunks_indexed": 3,
         "entities_extracted": 5,
         "status": "ok",
+        "trajectory_indexed": 0,
     }
     ingest_mock.assert_called_once()
     driver.close.assert_called_once()
@@ -268,3 +269,110 @@ def test_post_ingest_accepts_date_alias(monkeypatch) -> None:
     kwargs = ingest_mock.call_args.kwargs
     assert kwargs["session_date"] == "2026-07-08"
     assert kwargs["session_number"] == 1
+
+
+def test_post_ingest_transforms_raw_vendor_session(monkeypatch) -> None:
+    """Raw PatientSession JSON with metadata.source_system uses the adapter registry."""
+    monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
+
+    raw_session = {
+        "patientId": "pt-rauha-42",
+        "sessionNumber": 2,
+        "sessionDate": "2026-03-15",
+        "coachNotes": {
+            "sessionResponses": [
+                {"questionKey": "stressRating", "response": 6},
+            ],
+            "notes": "Discussed CBT thought record for anxiety.",
+        },
+        "sessionHomeworkResponses": [
+            {"questionKey": "valuesIdentification", "response": ["family", "health"]},
+        ],
+        "metadata": {"source_system": "rauha", "source_record_id": "abc123"},
+    }
+
+    fake_result = DualIndexResult(
+        chunks_indexed=2,
+        entities_extracted=4,
+        entities={"diagnoses": ["anxiety"], "interventions": ["cbt"]},
+        session_id="pt-rauha-42-session-2",
+        status="ok",
+    )
+
+    with (
+        patch("backend.routes.ingest.get_graph_driver", return_value=MagicMock()),
+        patch(
+            "backend.routes.ingest.ingest_session_note",
+            return_value=fake_result,
+        ) as ingest_mock,
+        patch(
+            "backend.routes.ingest._maybe_index_trajectory",
+            return_value=0,
+        ),
+    ):
+        from backend.main import create_app
+
+        with TestClient(create_app()) as client:
+            client.app.state.llm = MagicMock()
+            response = client.post("/ingest", json=raw_session)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["chunks_indexed"] == 2
+    assert body["entities_extracted"] == 4
+    assert body["status"] == "ok"
+
+    kwargs = ingest_mock.call_args.kwargs
+    assert kwargs["entity_id"] == "pt-rauha-42"
+    assert kwargs["session_number"] == 2
+    assert "Stress Rating" in kwargs["note_text"]
+    assert "stressRating" not in kwargs["note_text"]
+    assert "Core Values" in kwargs["note_text"]
+
+
+def test_post_ingest_indexes_trajectory_on_session_8(monkeypatch) -> None:
+    monkeypatch.setenv("USE_CASE_CONFIG", str(REPO_ROOT / "configs" / "mental_health.yaml"))
+    monkeypatch.setenv("MINDBRIDGE_LIGHT_STARTUP", "1")
+
+    raw_session = {
+        "patientId": "pt-traj",
+        "sessionNumber": 8,
+        "sessionDate": "2026-06-01",
+        "coachNotes": {
+            "sessionResponses": [{"questionKey": "stressRating", "response": 3}],
+        },
+        "metadata": {"source_system": "rauha"},
+    }
+
+    fake_result = DualIndexResult(
+        chunks_indexed=1,
+        entities_extracted=1,
+        entities={},
+        session_id="pt-traj-session-8",
+        status="ok",
+    )
+
+    with (
+        patch("backend.routes.ingest.get_graph_driver", return_value=MagicMock()),
+        patch("backend.routes.ingest.ingest_session_note", return_value=fake_result),
+        patch(
+            "backend.routes.ingest.ingest_trajectory_document",
+            return_value=3,
+        ) as traj_mock,
+        patch(
+            "adapters.rauha.adapter.RauhaAdapter.fetch_sessions",
+            return_value=[raw_session],
+        ),
+    ):
+        from backend.main import create_app
+
+        with TestClient(create_app()) as client:
+            client.app.state.llm = MagicMock()
+            response = client.post("/ingest", json=raw_session)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["trajectory_indexed"] == 3
+    traj_mock.assert_called_once()
+    assert traj_mock.call_args.kwargs["entity_id"] == "pt-traj"
+    assert "trajectory" in traj_mock.call_args.kwargs["note_text"].lower() or "Stress" in traj_mock.call_args.kwargs["note_text"]

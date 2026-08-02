@@ -16,17 +16,23 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from adapters import ADAPTER_REGISTRY, create_adapter
 from backend.routes.entity import router as entity_router
 from backend.routes.ingest import router as ingest_router
 from backend.routes.output import router as output_router
 from backend.routes.platform import router as platform_router
 from backend.routes.query import router as query_router
+from core.agent import build_agent
 from core.chain import build_chain
-from core.config import load_active_config, resolve_config_path
+from core.config import UseCaseConfig, load_active_config, resolve_config_path
 from core.embeddings import get_embeddings
 from core.graph import get_graph_driver
 from core.llm import build_llm
 from core.retriever import build_retriever
+from core.router import route_query
+from core.tools.cache import HybridCache
+from core.tools.entity_tools import ENTITY_TOOLS, init_tools
+from core.tools.source_system import SourceSystemInterface
 from core.validation import validate_config
 from core.vectorstore import documents_from_vectorstore, load_vectorstore
 
@@ -47,6 +53,23 @@ def _connect_neo4j() -> Optional[Any]:
         return None
 
 
+def _build_source_system(config: UseCaseConfig) -> SourceSystemInterface:
+    """Resolve ``source_system.adapter`` via :data:`ADAPTER_REGISTRY` and inject it."""
+    adapter = None
+    ss_cfg = config.source_system
+    adapter_name = (ss_cfg.adapter if ss_cfg is not None else "") or ""
+    if adapter_name:
+        if adapter_name not in ADAPTER_REGISTRY:
+            logger.warning(
+                "Unknown source_system.adapter %r — continuing with no adapter",
+                adapter_name,
+            )
+        else:
+            adapter = create_adapter(adapter_name)
+            logger.info("Source-system adapter loaded: %s", adapter_name)
+    return SourceSystemInterface(adapter)
+
+
 def _light_startup(app: FastAPI) -> None:
     """Config-only boot used by unit tests (skip embeddings / Chroma / Neo4j)."""
     config_path = resolve_config_path()
@@ -63,6 +86,10 @@ def _light_startup(app: FastAPI) -> None:
     app.state.chain = None
     app.state.graph_driver = None
     app.state.ragas_scores = None
+    app.state.source_system = None
+    app.state.cache = None
+    app.state.agent = None
+    app.state.router = route_query
     app.state.started_at = time.time()
     logger.info(
         "MindBridge platform loaded — light startup [%s → %s]",
@@ -87,6 +114,11 @@ def initialize_platform(app: FastAPI) -> int:
     chain = build_chain(config, retriever, llm)
     graph_driver = _connect_neo4j()
 
+    source_system = _build_source_system(config)
+    cache = HybridCache(vectorstore=vectorstore)
+    init_tools(source_system, cache, retriever)
+    agent = build_agent(config, llm, source_system, cache, retriever=retriever)
+
     app.state.config = config
     app.state.config_path = config_path
     app.state.embeddings = embeddings
@@ -98,6 +130,10 @@ def initialize_platform(app: FastAPI) -> int:
     app.state.chain = chain
     app.state.graph_driver = graph_driver
     app.state.ragas_scores = None
+    app.state.source_system = source_system
+    app.state.cache = cache
+    app.state.agent = agent
+    app.state.router = route_query
     app.state.started_at = time.time()
 
     logger.info(
@@ -106,6 +142,7 @@ def initialize_platform(app: FastAPI) -> int:
         config_path,
         config.display_name,
     )
+    logger.info("Agent initialised with %d tools", len(ENTITY_TOOLS))
     return chunk_count
 
 

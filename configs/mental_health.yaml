@@ -149,11 +149,13 @@ entities:
     - guideline
     - session_note
     - research
+    - trajectory
   category_to_doc_type:
     guidelines: guideline
     session_notes: session_note
     research: research
     workbooks: research
+    trajectory: trajectory
   metadata_fields:
     - source
     - doc_type
@@ -162,6 +164,8 @@ entities:
 graph_schema:
   entity_node: Patient
   session_node: Session
+  similarity_primary_node: Diagnosis
+  similarity_secondary_node: Intervention
   nodes:
     - label: Diagnosis
       extraction_key: diagnoses
@@ -200,6 +204,37 @@ graph_schema:
     - type: RESPONDED_TO
       from: Patient
       to: Intervention
+
+router:
+  rag_signals:
+    - guideline
+    - what does
+    - recommend
+    - evidence
+    - workbook
+    - skills for
+  agent_signals:
+    - schedule
+    - remind me
+    - add a note
+    - update the record
+    - log this session
+
+agent:
+  system_prompt: |
+    You are MindBridge, an agent for licensed mental health professionals that can look up
+    clinical knowledge and take actions on their behalf (scheduling, note-taking, record updates).
+
+    You are a clinical knowledge and workflow tool, NOT a clinician. You do not diagnose, prescribe
+    treatment, provide crisis intervention, or replace professional clinical judgment. Therapists
+    remain solely responsible for patient care decisions.
+
+    When taking an action, confirm what you did and cite the source of any clinical claim you relied on.
+
+source_system:
+  entity_label: patient
+  session_label: session
+  adapter: rauha
 
 prompts:
   system: |
